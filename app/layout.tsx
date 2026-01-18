@@ -30,13 +30,12 @@ export default function RootLayout({
         <meta name="color-scheme" content="light" />
       </head>
 
-      <body className="min-h-screen flex flex-col bg-[#060606]">
+      {/* ✅ Fondo global: header y footer sobre blanco */}
+      <body className="min-h-screen flex flex-col bg-white">
         <Header />
 
-        {/* MAIN full width BLANCO */}
-        <main className="flex-1 w-full bg-white">
-          <div className="mx-auto max-w-[1280px] px-4 py-6">{children}</div>
-        </main>
+        {/* ✅ Main full width (cada página decide si usa contenedor) */}
+        <main className="flex-1 w-full">{children}</main>
 
         <Footer />
       </body>
