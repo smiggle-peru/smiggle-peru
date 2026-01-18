@@ -13,7 +13,7 @@ export default function HomePage() {
         desktopSrc="/banners/hero-desktop-es.jpg"
         mobileSrc="/banners/hero-mobile-es.jpg"
         alt="Regreso a clases Smiggle Perú"
-        linkHref="/regreso-a-clases"
+        linkHref="/categoria/regreso-a-clases"
       />
 
       {/* COMPRA POR CATEGORÍA */}
@@ -39,9 +39,9 @@ export default function HomePage() {
 
       {/* LICENCIAS Y COLABORACIONES */}
       <LicenseCarousel
-        ctaHref="/categoria/licencias"
         title="LICENCIAS Y COLABORACIONES"
         ctaLabel="COMPRAR AHORA"
+        ctaHref="/categoria/licencias"
         items={[
           { src: "/licenses/hello-kitty.png", alt: "Hello Kitty", href: "/categoria/licencias/hello-kitty" },
           { src: "/licenses/marvel.png", alt: "Marvel", href: "/categoria/licencias/marvel" },
