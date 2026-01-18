@@ -1,0 +1,162 @@
+"use client";
+
+import Link from "next/link";
+import Image from "next/image";
+import { useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { NAV_ITEMS, type NavItem } from "@/components/nav";
+import { IconMenu } from "@/components/icons"; // ✅ quitamos IconSearch
+import { MobileDrawer } from "@/components/MobileDrawer";
+import { HeaderSearchDesktop } from "@/components/HeaderSearchDesktop";
+import { MegaMenu } from "@/components/MegaMenu";
+import { PromoBar } from "@/components/PromoBar";
+
+export function Header() {
+  const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // MegaMenu (desktop hover)
+  const [hoverItem, setHoverItem] = useState<NavItem | null>(null);
+  const [megaOpen, setMegaOpen] = useState(false);
+
+  // 🔸 Temporal (luego lo conectamos al carrito real)
+  const cartCount = 0;
+
+  const activeHref = useMemo(() => {
+    const found = NAV_ITEMS.find((x) =>
+      pathname?.startsWith(x.href.replace(/\/$/, ""))
+    );
+    return found?.href ?? "";
+  }, [pathname]);
+
+  return (
+    <header className="bg-white">
+      {/* TOP ROW (ULTRA COMPACTO) */}
+      <div className="mx-auto flex max-w-[1280px] items-center px-4 pt-1 pb-0">
+        {/* Left */}
+        <div className="flex flex-1 items-center justify-start">
+          {/* ✅ Mobile: solo menú (la búsqueda se va dentro del drawer) */}
+          <div className="flex items-center gap-0.5 md:hidden">
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="p-1.5"
+              aria-label="Abrir menú"
+            >
+              <IconMenu />
+            </button>
+          </div>
+
+          {/* ✅ Desktop buscador intacto */}
+          <div className="hidden md:block">
+            <HeaderSearchDesktop placeholder="Buscar productos" />
+          </div>
+        </div>
+
+        {/* Center Logo (más chico) */}
+        <div className="flex flex-1 items-center justify-center">
+          <Link href="/" aria-label="Ir al inicio" className="block">
+            <Image
+              src="/brand/smiggle-logo.jpg"
+              alt="Smiggle"
+              width={180}
+              height={48}
+              priority
+              className="h-auto w-[160px]"
+            />
+          </Link>
+        </div>
+
+        {/* Right Cart */}
+        <div className="flex flex-1 items-center justify-end">
+          <Link href="/carrito" className="relative p-1.5" aria-label="Carrito">
+            <Image
+              src="/icons/bag.png"
+              alt="Carrito"
+              width={26}
+              height={26}
+              className="h-[26px] w-[26px] transition-transform hover:scale-110"
+              priority
+            />
+
+            {cartCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-black px-1 text-[10px] font-bold text-white">
+                {cartCount}
+              </span>
+            )}
+          </Link>
+        </div>
+      </div>
+
+      {/* NAV (desktop) + MegaMenu + PromoBar */}
+      <div
+        className="hidden md:block"
+        onMouseLeave={() => {
+          setMegaOpen(false);
+          setHoverItem(null);
+        }}
+      >
+        <div className="relative isolate z-50">
+          <div className="mx-auto max-w-[1280px] px-4">
+            {/* Nav más compacto */}
+            <nav className="flex items-center justify-center gap-8 pt-0.5 pb-1.5">
+              {NAV_ITEMS.map((item) => {
+                const isActive = activeHref === item.href;
+
+                const isBackToSchool =
+                  item.label.trim().toUpperCase() === "REGRESO A CLASES";
+
+                const base =
+                  "text-[14px] lg:text-[15px] font-medium uppercase tracking-[0.10em] transition-colors";
+
+                const className = isBackToSchool
+                  ? `${base} animate-gradient bg-[linear-gradient(90deg,#00B7B7,#7C3AED,#E64545,#00B7B7)] bg-[length:200%_200%] bg-clip-text text-transparent`
+                  : `${base} ${
+                      isActive
+                        ? "text-[#00B7B7]"
+                        : "text-black hover:text-[#00B7B7]"
+                    }`;
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={className}
+                    onMouseEnter={() => {
+                      setHoverItem(item);
+                      setMegaOpen(!!item.columns?.length);
+                    }}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          <div className="h-[2px] w-full bg-[#E64545]" />
+
+          <MegaMenu
+            item={hoverItem}
+            open={megaOpen}
+            onClose={() => {
+              setMegaOpen(false);
+              setHoverItem(null);
+            }}
+          />
+        </div>
+
+        {/* Desktop PromoBar */}
+        <div className="hidden md:block leading-none">
+          <PromoBar />
+        </div>
+      </div>
+
+      {/* Mobile PromoBar */}
+      <div className="md:hidden">
+        <PromoBar />
+      </div>
+
+      <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+    </header>
+  );
+}
