@@ -2,7 +2,7 @@
 
 export function PromoBar() {
   return (
-    <div className="relative z-20 w-full bg-[linear-gradient(90deg,#E64545_0%,#D83F3F_50%,#E64545_100%)] md:-mb-[22px]">
+    <div className="relative z-20 w-full bg-[linear-gradient(90deg,#E64545_0%,#D83F3F_50%,#E64545_100%)]">
       <div className="mx-auto flex items-center justify-center px-4 py-3 md:min-h-[96px] md:max-w-[1280px] md:px-4 md:py-0">
         <div
           className="
@@ -18,4 +18,3 @@ export function PromoBar() {
     </div>
   );
 }
-

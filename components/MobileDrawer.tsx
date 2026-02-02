@@ -59,11 +59,19 @@ export function MobileDrawer({ open, onClose }: Props) {
   const activeColumns = useMemo(() => active?.columns ?? [], [active]);
 
   return (
-    <>
+    // ✅ un solo stacking context para overlay + drawer
+    <div
+      className={`fixed inset-0 z-[999] ${
+        open ? "pointer-events-auto" : "pointer-events-none"
+      }`}
+      aria-hidden={!open}
+    >
       {/* Overlay */}
-      <div
-        className={`fixed inset-0 z-50 bg-black/40 transition-opacity ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
+      <button
+        type="button"
+        aria-label="Cerrar menú"
+        className={`absolute inset-0 bg-black/40 transition-opacity ${
+          open ? "opacity-100" : "opacity-0"
         }`}
         onClick={() => {
           if (active) setActive(null);
@@ -73,10 +81,9 @@ export function MobileDrawer({ open, onClose }: Props) {
 
       {/* Drawer */}
       <aside
-        className={`fixed left-0 top-0 z-50 h-full w-[84%] max-w-sm bg-white shadow-xl transition-transform ${
+        className={`absolute left-0 top-0 h-[100dvh] w-[84%] max-w-sm bg-white shadow-xl transition-transform ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
-        aria-hidden={!open}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b px-4 py-4">
@@ -98,6 +105,7 @@ export function MobileDrawer({ open, onClose }: Props) {
           </div>
 
           <button
+            type="button"
             onClick={() => {
               if (active) setActive(null);
               else onClose();
@@ -123,7 +131,7 @@ export function MobileDrawer({ open, onClose }: Props) {
         </form>
 
         {/* Body */}
-        <div className="h-[calc(100%-124px)] overflow-y-auto">
+        <div className="h-[calc(100dvh-124px)] overflow-y-auto">
           {/* LEVEL 1 */}
           {!active && (
             <nav className="p-4">
@@ -149,7 +157,6 @@ export function MobileDrawer({ open, onClose }: Props) {
                         className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left text-[13px] font-extrabold uppercase tracking-wider hover:bg-gray-50"
                       >
                         <span>{item.label}</span>
-
                         {hasChildren && (
                           <IconChevronRight className="text-black/35" />
                         )}
@@ -213,6 +220,6 @@ export function MobileDrawer({ open, onClose }: Props) {
           )}
         </div>
       </aside>
-    </>
+    </div>
   );
 }

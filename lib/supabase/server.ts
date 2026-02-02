@@ -1,11 +1,26 @@
 import { createClient } from "@supabase/supabase-js";
 
 export function supabaseServer() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL is required");
-  if (!key) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is required");
+  // ✅ debug claro si faltan envs
+  if (!url || !key) {
+    console.error("Missing Supabase env vars:", {
+      NEXT_PUBLIC_SUPABASE_URL: url ? "OK" : "MISSING",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: key ? "OK" : "MISSING",
+    });
+    throw new Error("Supabase env vars missing (.env.local)");
+  }
 
-  return createClient(url, key, { auth: { persistSession: false } });
+  // ✅ valida formato de URL (evita fetch failed por url mala)
+  if (!url.startsWith("https://")) {
+    throw new Error(
+      `NEXT_PUBLIC_SUPABASE_URL must start with https:// (got: ${url})`
+    );
+  }
+
+  return createClient(url, key, {
+    auth: { persistSession: false },
+  });
 }

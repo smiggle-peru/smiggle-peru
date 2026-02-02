@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS, type NavItem } from "@/components/nav";
-import { IconMenu } from "@/components/icons"; // ✅ quitamos IconSearch
+import { IconMenu } from "@/components/icons";
 import { MobileDrawer } from "@/components/MobileDrawer";
 import { HeaderSearchDesktop } from "@/components/HeaderSearchDesktop";
 import { MegaMenu } from "@/components/MegaMenu";
 import { PromoBar } from "@/components/PromoBar";
+import { useCart } from "@/lib/store/cart";
 
 export function Header() {
   const pathname = usePathname();
@@ -19,8 +20,57 @@ export function Header() {
   const [hoverItem, setHoverItem] = useState<NavItem | null>(null);
   const [megaOpen, setMegaOpen] = useState(false);
 
-  // 🔸 Temporal (luego lo conectamos al carrito real)
-  const cartCount = 0;
+  // ✅ mounted (fix hydration por Zustand persist)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // ✅ PromoBar smart (oculta bajando, aparece subiendo) - FIX DEFINITIVO
+  const [showPromo, setShowPromo] = useState(true);
+
+  // ✅ FIX PRO (anti-jitter + solo reaparece si subes de verdad)
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let lastDirection: "up" | "down" | null = null;
+    let accUp = 0;
+
+    const onScroll = () => {
+      const y = window.scrollY;
+      const delta = y - lastY;
+
+      // ignora micro movimientos (trackpad jitter)
+      if (Math.abs(delta) < 4) return;
+
+      if (delta > 0) {
+        // bajando
+        lastDirection = "down";
+        accUp = 0;
+
+        if (y > 40) setShowPromo(false);
+      } else {
+        // subiendo
+        if (lastDirection !== "up") {
+          lastDirection = "up";
+          accUp = 0;
+        }
+
+        accUp += Math.abs(delta);
+
+        // solo muestra si subió "de verdad"
+        if (y <= 10 || accUp > 30) {
+          setShowPromo(true);
+        }
+      }
+
+      lastY = y;
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // ✅ carrito real
+  const cartCount = useCart((s) => s.count());
+  const hasCart = mounted && cartCount > 0;
 
   const activeHref = useMemo(() => {
     const found = NAV_ITEMS.find((x) =>
@@ -30,12 +80,11 @@ export function Header() {
   }, [pathname]);
 
   return (
-    <header className="bg-white">
-      {/* TOP ROW (ULTRA COMPACTO) */}
+    <header className="sticky top-0 z-[999] border-b border-black/10 bg-white/95 backdrop-blur-md">
+      {/* TOP ROW */}
       <div className="mx-auto flex max-w-[1280px] items-center px-4 pt-1 pb-0">
         {/* Left */}
         <div className="flex flex-1 items-center justify-start">
-          {/* ✅ Mobile: solo menú (la búsqueda se va dentro del drawer) */}
           <div className="flex items-center gap-0.5 md:hidden">
             <button
               onClick={() => setDrawerOpen(true)}
@@ -46,13 +95,12 @@ export function Header() {
             </button>
           </div>
 
-          {/* ✅ Desktop buscador intacto */}
           <div className="hidden md:block">
             <HeaderSearchDesktop placeholder="Buscar productos" />
           </div>
         </div>
 
-        {/* Center Logo (más chico) */}
+        {/* Center Logo */}
         <div className="flex flex-1 items-center justify-center">
           <Link href="/" aria-label="Ir al inicio" className="block">
             <Image
@@ -74,12 +122,14 @@ export function Header() {
               alt="Carrito"
               width={26}
               height={26}
-              className="h-[26px] w-[26px] transition-transform hover:scale-110"
+              className={`h-[26px] w-[26px] transition-transform hover:scale-110 ${
+                hasCart ? "cart-bag-red" : ""
+              }`}
               priority
             />
 
-            {cartCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-black px-1 text-[10px] font-bold text-white">
+            {hasCart && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#E64545] px-1 text-[10px] font-bold text-white">
                 {cartCount}
               </span>
             )}
@@ -87,7 +137,7 @@ export function Header() {
         </div>
       </div>
 
-      {/* NAV (desktop) + MegaMenu + PromoBar */}
+      {/* NAV + MegaMenu (desktop) */}
       <div
         className="hidden md:block"
         onMouseLeave={() => {
@@ -97,7 +147,6 @@ export function Header() {
       >
         <div className="relative isolate z-50">
           <div className="mx-auto max-w-[1280px] px-4">
-            {/* Nav más compacto */}
             <nav className="flex items-center justify-center gap-8 pt-0.5 pb-1.5">
               {NAV_ITEMS.map((item) => {
                 const isActive = activeHref === item.href;
@@ -145,14 +194,22 @@ export function Header() {
           />
         </div>
 
-        {/* Desktop PromoBar */}
-        <div className="hidden md:block leading-none">
+        {/* ✅ Desktop PromoBar (se oculta al bajar) */}
+        <div
+          className={`hidden md:block overflow-hidden transition-all duration-300 ease-in-out ${
+            showPromo ? "max-h-[120px] opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
           <PromoBar />
         </div>
       </div>
 
-      {/* Mobile PromoBar */}
-      <div className="md:hidden">
+      {/* ✅ Mobile PromoBar (se oculta al bajar) */}
+      <div
+        className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${
+          showPromo ? "max-h-16 opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <PromoBar />
       </div>
 

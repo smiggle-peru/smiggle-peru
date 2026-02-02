@@ -1,0 +1,66 @@
+Proyecto: Smiggle Perú
+Razón Social y/o Ruc: 20503969832 - SML PERU SOCIEDAD ANONIMA CERRADA
+Almacén: Direccion Almacén: Vulcano 261, ATE, LIMA 15012 remate
+Whatsapp: ( 903504004 )
+Email: ( smiggle@smiggle-peru.com )
+Dominio: smiggle-peru.com ( aun no comprado pero ya reservado)
+------------------------------------------------------------------------
+
+META SEO TITULO: Smiggle Perú
+
+META SEO SLOGAN: Smiggle Perú | Los creadores de la papelería más divertida
+
+META SEO DESCRIPCION: Smiggle, los creadores de la papelería más divertida. Encuentra mochilas, loncheras, cartucheras y accesorios coloridos para el colegio. Compra online.
+
+Categorías: 
+
+REGRESO A CLASES
+- Pack Escolares
+- Mochilas
+- Loncheras
+- Botellas
+- Preescolar
+- Cartucheras
+- Cuadernos
+- Plumones y Marcadores
+- Lapices
+- Borradores, reglas y útiles 
+
+NOVEDADES
+- Licencias
+- Colecciones
+- Preescolar
+
+LICENCIAS
+- Care Bears
+- Marvel
+- Disney Stitch
+- Paw Patrol
+- Hello Kitty
+
+MOCHILAS
+- Mochilas
+- Packs
+- Mochilas con Ruedas
+- Mochilas Preescolares
+
+LONCHERAS
+- Loncheras
+- Botellas
+
+PAPELERIA
+- Cartucheras
+- Plumones y arte
+- Lapices 
+- Cuadernos
+
+
+TIPO DE WEB: Full Responsive
+Tipo de Tecnología: Supabase + Vercel + Cloudflare
+Requerimientos: 
+- Todos los productos tendrán reseñas puestas por la empresa misma donde iran fotos, estrellas y comentarios. ( NINGUN CLIENTE PODRA DEJAR RESEÑA, LAS MISMAS RESEÑAS LO HAREMOS NOSOTROS COMO RELLENO)
+- Algunos productos iran en diferentes categorías y lo haremos para no estar subiendo el mismo producto en diferentes categorías y/o subcategorías
+- MercadoPago como procesador de pagos
+- Algunos productos tendrán Color y/o tamaños con precios diferentes
+
+

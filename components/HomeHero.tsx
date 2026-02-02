@@ -12,7 +12,7 @@ type Props = {
   ctaHref?: string;
   ctaLabel?: string;
 
-  // ✅ NUEVO: si quieres que el hero completo sea clickeable
+  // ✅ si quieres que el hero completo sea clickeable
   linkHref?: string;
   linkAriaLabel?: string;
 };
@@ -27,9 +27,9 @@ export function HomeHero({
   linkAriaLabel,
 }: Props) {
   const content = (
-    <section className="relative w-full -mt-[1px]">
-      {/* DESKTOP */}
-      <div className="relative hidden md:block bg-white left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-[100vw] overflow-x-clip -mt-[2px]">
+    <section className="relative w-full">
+      {/* DESKTOP (igual que lo tenías) */}
+      <div className="relative hidden md:block bg-white left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-[100vw] overflow-x-clip">
         <div className="flex justify-center">
           <Image
             src={desktopSrc}
@@ -43,24 +43,27 @@ export function HomeHero({
         </div>
       </div>
 
-      {/* MOBILE */}
-      <div className="md:hidden -mx-4 -mt-6">
-        <div className="relative w-screen bg-[#7fdad6]">
-          <div className="relative mx-auto w-full max-w-[420px]">
-            <Image
-              src={mobileSrc}
-              alt={alt}
-              width={420}
-              height={560}
-              priority
-              sizes="100vw"
-              className="h-auto w-full object-contain"
-            />
+      {/* MOBILE (FIXED) */}
+      <div className="md:hidden">
+        {/* full-bleed sin márgenes negativos */}
+        <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-[100vw] bg-[#7fdad6]">
+          {/* contenedor con ratio fijo para que no se “rompa” */}
+          <div className="mx-auto w-full max-w-[520px] px-0">
+            <div className="relative w-full overflow-hidden aspect-[4/5]">
+              <Image
+                src={mobileSrc}
+                alt={alt}
+                fill
+                priority
+                sizes="100vw"
+                className="object-contain"
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* CTA opcional */}
+      {/* CTA opcional (desktop) */}
       {ctaHref && ctaLabel && (
         <div className="pointer-events-none absolute inset-0 hidden md:flex items-end">
           <div className="mx-auto w-full px-12 pb-10">
@@ -76,7 +79,6 @@ export function HomeHero({
     </section>
   );
 
-  // ✅ Si hay linkHref, hacemos TODO el hero clickeable
   if (linkHref) {
     return (
       <Link

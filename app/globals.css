@@ -98,3 +98,10 @@ body {
   overflow-x: hidden;
 }
 
+/* ✅ vuelve la bolsa roja cuando hay items */
+.cart-bag-red {
+  filter: brightness(0) saturate(100%) invert(18%) sepia(92%) saturate(6164%)
+    hue-rotate(355deg) brightness(95%) contrast(110%);
+}
+
+
