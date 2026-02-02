@@ -128,7 +128,10 @@ export async function getProductsByCategory(
     .select(
       "product_id,price_now,price_before,images,stock,sort_order,is_active,color,color_slug,color_hex,color_name"
     )
-    .in("product_id", products.map((p) => p.id))
+    .in(
+      "product_id",
+      products.map((p) => p.id)
+    )
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
 
@@ -143,15 +146,20 @@ export async function getProductsByCategory(
   }
 
   // 7) 1 card por color
-  return products.flatMap((p) => {
+  return products.flatMap((p): GridItem[] => {
     const list = byProduct.get(p.id) ?? [];
 
+    // ✅ FIX: devuelve preview SIEMPRE (evita el error en build)
     if (!list.length) {
       return [
         {
           id: p.id,
           title: p.title,
           slug: p.slug,
+          preview: {
+            color: null,
+            color_slug: null,
+          },
           card: {
             price_now: null,
             price_before: null,
@@ -170,7 +178,7 @@ export async function getProductsByCategory(
       byColor.set(key, arr);
     }
 
-    return Array.from(byColor.entries()).map(([key, vars]) => {
+    return Array.from(byColor.entries()).map(([key, vars]): GridItem => {
       const primary = vars.find((v) => (v.stock ?? 0) > 0) ?? vars[0] ?? null;
       const img = primary?.images?.[0] ?? null;
 
