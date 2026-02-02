@@ -871,11 +871,11 @@ export default function CheckoutClient() {
                 />
                 <span className="text-[13px] text-black/70">
                   Acepto los{" "}
-                  <Link href="/tyc" className="underline text-black">
+                  <Link href="/terminos-y-condiciones" className="underline text-black">
                     Términos y Condiciones
                   </Link>{" "}
                   y la{" "}
-                  <Link href="/privacidad" className="underline text-black">
+                  <Link href="/politicas-de-privacidad" className="underline text-black">
                     Política de Privacidad
                   </Link>
                   .
