@@ -7,52 +7,34 @@ import EmptyCart from "@/components/EmptyCart";
 import { useCart } from "@/lib/store/cart";
 
 type CartItem = {
-  id: string;
+  key: string; // ✅ viene del store
+  product_id: string;
   title: string;
-  slug?: string;
+  slug: string;
+  image: string | null;
+  price_now: number;
+  qty: number;
 
-  image?: string | null;
-
-  price?: number | null;
-  price_now?: number | null;
-
-  qty?: number;
-  quantity?: number;
-
-  variant_id?: string;
-
-  // color
-  color?: string | null;
-  color_name?: string | null;
   color_slug?: string | null;
-  color_hex?: string | null;
+  color_name?: string | null;
+  size_label?: string | null;
+  color_hex?: string | null; // si no lo usas, quítalo
 };
 
-function getQty(it: CartItem) {
-  return Number(it.qty ?? it.quantity ?? 1);
-}
-
-function getUnitPrice(it: CartItem) {
-  const v = it.price_now ?? it.price ?? 0;
-  return Number(v || 0);
-}
-
 function formatPEN(n: number) {
-  return `S/ ${n.toFixed(2)}`;
+  return `S/ ${Number(n || 0).toFixed(2)}`;
 }
 
 function getColorLabel(it: CartItem) {
-  const v = it.color_name ?? it.color ?? it.color_slug ?? null;
+  const v = it.color_name ?? it.color_slug ?? null;
   if (!v) return null;
-  // ✅ si viene como "black-mix", lo mostramos más bonito
   return v.replaceAll("-", " ");
 }
 
 export function CartClient() {
-  const items = useCart((s: any) => s.items) as CartItem[];
-
-  const remove = useCart((s: any) => s.remove ?? s.removeItem ?? null);
-  const clear = useCart((s: any) => s.clear ?? s.reset ?? null);
+  const items = useCart((s) => s.items);
+  const remove = useCart((s) => s.remove);
+  const clear = useCart((s) => s.clear);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -63,11 +45,12 @@ export function CartClient() {
     let sub = 0;
 
     for (const it of safeItems) {
-      const q = getQty(it);
-      const p = getUnitPrice(it);
+      const q = Number(it.qty ?? 1);
+      const p = Number(it.price_now ?? 0);
       units += q;
       sub += q * p;
     }
+
     return { totalUnits: units, subtotal: sub };
   }, [safeItems]);
 
@@ -104,26 +87,23 @@ export function CartClient() {
               Productos en tu carrito
             </div>
 
-            {clear && (
-              <button
-                type="button"
-                onClick={() => clear()}
-                className="text-[12px] font-medium text-red-600 hover:underline underline-offset-4"
-              >
-                Vaciar carrito
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => clear()}
+              className="text-[12px] font-medium text-red-600 hover:underline underline-offset-4"
+            >
+              Vaciar carrito
+            </button>
           </div>
 
           <div className="divide-y divide-black/10">
             {safeItems.map((it) => {
-              const qty = getQty(it);
-              const unit = getUnitPrice(it);
+              const qty = Number(it.qty ?? 1);
+              const unit = Number(it.price_now ?? 0);
               const colorLabel = getColorLabel(it);
-              const key = `${it.id}-${it.variant_id ?? it.color_slug ?? "default"}`;
 
               return (
-                <div key={key} className="px-6 py-5">
+                <div key={it.key} className="px-6 py-5">
                   <div className="flex items-start gap-4">
                     {/* image */}
                     <div className="h-[84px] w-[84px] shrink-0 overflow-hidden rounded-2xl border border-black/10 bg-black/[0.02]">
@@ -146,23 +126,17 @@ export function CartClient() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          {/* Title: semibold, no exagerado */}
                           <div className="line-clamp-2 text-[13px] font-medium leading-snug text-black">
-                            {it.slug ? (
-                              <Link
-                                href={`/producto/${it.slug}${
-                                  it.color_slug ? `?color=${it.color_slug}` : ""
-                                }`}
-                                className="hover:underline underline-offset-4"
-                              >
-                                {it.title}
-                              </Link>
-                            ) : (
-                              it.title
-                            )}
+                            <Link
+                              href={`/producto/${it.slug}${
+                                it.color_slug ? `?color=${it.color_slug}` : ""
+                              }`}
+                              className="hover:underline underline-offset-4"
+                            >
+                              {it.title}
+                            </Link>
                           </div>
 
-                          {/* Meta: gris, sin negrita */}
                           <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] text-black/55">
                             <span>Cantidad: {qty}</span>
 
@@ -171,32 +145,37 @@ export function CartClient() {
                                 <span className="text-black/20">•</span>
                                 <span className="inline-flex items-center gap-2">
                                   <span>Color:</span>
-                                  {it.color_hex ? (
-                                    <span
-                                      className="h-3 w-3 rounded-full border border-black/15"
-                                      style={{ backgroundColor: it.color_hex }}
-                                      aria-label={`Color ${colorLabel}`}
-                                      title={colorLabel}
-                                    />
-                                  ) : null}
-                                  <span className="text-black/80">{colorLabel}</span>
+                                  <span className="text-black/80">
+                                    {colorLabel}
+                                  </span>
+                                </span>
+                              </>
+                            )}
+
+                            {it.size_label && (
+                              <>
+                                <span className="text-black/20">•</span>
+                                <span className="inline-flex items-center gap-2">
+                                  <span>Talla:</span>
+                                  <span className="text-black/80">
+                                    {it.size_label}
+                                  </span>
                                 </span>
                               </>
                             )}
                           </div>
                         </div>
 
-                        {/* remove: sutil */}
+                        {/* ✅ ELIMINAR INDIVIDUAL (por key) */}
                         <button
                           type="button"
-                          onClick={() => remove?.(it)}
+                          onClick={() => remove(it.key)}
                           className="shrink-0 text-[12px] text-black/45 hover:text-black hover:underline underline-offset-4"
                         >
                           Eliminar
                         </button>
                       </div>
 
-                      {/* Price: acá sí manda (pro) */}
                       <div className="mt-3 text-[14px] font-semibold text-red-600">
                         {formatPEN(unit)}
                       </div>
@@ -210,12 +189,16 @@ export function CartClient() {
 
         {/* Right */}
         <aside className="rounded-2xl border border-black/10 bg-white p-6 md:sticky md:top-6">
-          <div className="text-[13px] font-medium text-black">Resumen de compra</div>
+          <div className="text-[13px] font-medium text-black">
+            Resumen de compra
+          </div>
 
           <div className="mt-4 space-y-3 text-[13px]">
             <div className="flex items-center justify-between">
               <span className="text-black/55">Subtotal</span>
-              <span className="font-medium text-black">{formatPEN(subtotal)}</span>
+              <span className="font-medium text-black">
+                {formatPEN(subtotal)}
+              </span>
             </div>
 
             <div className="flex items-center justify-between gap-4">
@@ -226,24 +209,23 @@ export function CartClient() {
             </div>
 
             <Link
-  href="/checkout"
-  className="
-    mt-4 inline-flex w-full items-center justify-center
-    rounded-full
-    bg-[#46BEDC]
-    px-7 py-3.5
-    text-[13px] font-bold tracking-wide text-white
-    shadow-[0_10px_25px_rgba(70,190,220,0.45)]
-    transition-all duration-200
-    hover:-translate-y-[1px]
-    hover:bg-[#3DB3CF]
-    hover:shadow-[0_14px_30px_rgba(70,190,220,0.55)]
-    active:translate-y-0
-    active:shadow-[0_8px_18px_rgba(70,190,220,0.35)]
-  "
->
-  Continuar con la compra
-</Link>
+              href="/checkout"
+              className="
+                mt-4 inline-flex w-full items-center justify-center
+                rounded-full bg-[#46BEDC]
+                px-7 py-3.5
+                text-[13px] font-bold tracking-wide text-white
+                shadow-[0_10px_25px_rgba(70,190,220,0.45)]
+                transition-all duration-200
+                hover:-translate-y-[1px]
+                hover:bg-[#3DB3CF]
+                hover:shadow-[0_14px_30px_rgba(70,190,220,0.55)]
+                active:translate-y-0
+                active:shadow-[0_8px_18px_rgba(70,190,220,0.35)]
+              "
+            >
+              Continuar con la compra
+            </Link>
 
             <Link
               href="/"
