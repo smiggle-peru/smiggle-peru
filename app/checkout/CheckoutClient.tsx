@@ -404,11 +404,20 @@ export default function CheckoutClient() {
       return;
     }
 
+    // ✅ AHORA MANDA ITEMS (NO SUBTOTAL)
+    const payloadItems = items.map((it) => ({
+      product_id: it.product_id,
+      qty: it.qty,
+    }));
+
     try {
       const res = await fetch("/api/validate-coupon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, subtotal }),
+        body: JSON.stringify({
+          code,
+          items: payloadItems,
+        }),
       });
 
       const data = await res.json();
@@ -871,11 +880,17 @@ export default function CheckoutClient() {
                 />
                 <span className="text-[13px] text-black/70">
                   Acepto los{" "}
-                  <Link href="/terminos-y-condiciones" className="underline text-black">
+                  <Link
+                    href="/terminos-y-condiciones"
+                    className="underline text-black"
+                  >
                     Términos y Condiciones
                   </Link>{" "}
                   y la{" "}
-                  <Link href="/politicas-de-privacidad" className="underline text-black">
+                  <Link
+                    href="/politicas-de-privacidad"
+                    className="underline text-black"
+                  >
                     Política de Privacidad
                   </Link>
                   .

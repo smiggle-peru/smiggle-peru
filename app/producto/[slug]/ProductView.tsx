@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/lib/store/cart";
+import { ProductDetailsPanels } from "@/components/ProductDetailsPanels";
 
 type Variant = {
   id: string;
@@ -30,9 +31,7 @@ export function ProductView({
   product,
   variants,
   initialColorSlug,
-  // opcional si luego conectas carrito
   onAddToCart,
-  // productos similares (opcional)
   similarSlot,
 }: {
   product: { id?: string; title: string; slug?: string; details: any };
@@ -41,10 +40,8 @@ export function ProductView({
   onAddToCart?: (v: Variant, qty: number) => void;
   similarSlot?: React.ReactNode;
 }) {
-  // ✅ carrito real
   const add = useCart((s) => s.add);
 
-  // 1 opción por color_slug (para swatches)
   const colors = useMemo(() => {
     const m = new Map<string, Variant>();
     for (const v of variants) {
@@ -68,12 +65,10 @@ export function ProductView({
   const [selected, setSelected] = useState<Variant | null>(initial);
   const [qty, setQty] = useState(1);
 
-  // Galería (si una variante tiene varias imágenes)
   const gallery = selected?.images?.filter(Boolean) ?? [];
   const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => {
-    // cuando cambia color, vuelve a la primera foto
     setActiveIdx(0);
   }, [selected?.id]);
 
@@ -90,33 +85,19 @@ export function ProductView({
 
   const inStock = (selected?.stock ?? 0) > 0;
 
-  // ✅ reglas para permitir agregar
   const canAdd =
     !!selected && inStock && typeof priceNow === "number" && priceNow > 0;
 
-  // details esperado (opcional)
   const includes: string[] = Array.isArray(product?.details?.includes)
     ? product.details.includes
     : [];
 
-  const detailText: string | null =
-    typeof product?.details?.detail_text === "string"
-      ? product.details.detail_text
-      : null;
-
-  const shippingText: string | null =
-    typeof product?.details?.shipping_text === "string"
-      ? product.details.shipping_text
-      : null;
-
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 py-8">
-      {/* GRID: izquierda (galería) / derecha (info) / extra (similares) */}
       <div className="grid gap-10 lg:grid-cols-[560px_1fr_320px]">
         {/* ======= GALERÍA ======= */}
         <div className="lg:pr-2">
           <div className="grid gap-3 lg:grid-cols-[64px_1fr]">
-            {/* thumbs (desktop) */}
             <div className="hidden lg:flex lg:flex-col lg:gap-3">
               {gallery.slice(0, 6).map((src, i) => (
                 <button
@@ -140,7 +121,6 @@ export function ProductView({
               ))}
             </div>
 
-            {/* imagen grande */}
             <div className="relative overflow-hidden rounded-lg border border-black/10 bg-[#f3f3f3]">
               <div className="relative aspect-square w-full">
                 {activeImg ? (
@@ -159,7 +139,6 @@ export function ProductView({
                 )}
               </div>
 
-              {/* thumbs (mobile) */}
               {gallery.length > 1 ? (
                 <div className="flex gap-2 overflow-x-auto border-t border-black/10 bg-white p-3 lg:hidden">
                   {gallery.slice(0, 10).map((src, i) => (
@@ -186,7 +165,7 @@ export function ProductView({
           </div>
         </div>
 
-        {/* ======= INFO (estilo Smiggle) ======= */}
+        {/* ======= INFO ======= */}
         <div className="lg:pt-1">
           <h1
             className={cn(
@@ -199,7 +178,6 @@ export function ProductView({
             {product.title}
           </h1>
 
-          {/* Precio */}
           <div className="mt-3 flex flex-wrap items-center gap-3">
             {priceBefore ? (
               <span className="text-[22px] font-semibold tracking-[-0.01em] text-black/45 line-through md:text-[24px]">
@@ -275,10 +253,9 @@ export function ProductView({
             </div>
           </div>
 
-          {/* Qty + CTA (Smiggle-like) */}
+          {/* Qty + CTA */}
           <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4 shadow-[0_10px_30px_rgba(0,0,0,0.06)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {/* Cantidad */}
               <div className="flex items-center justify-between gap-3 sm:justify-start">
                 <div className="text-[12px] font-semibold uppercase tracking-[0.14em] text-black/70">
                   Cantidad
@@ -315,16 +292,14 @@ export function ProductView({
                 </div>
               </div>
 
-              {/* CTA */}
               <button
                 type="button"
                 disabled={!canAdd}
                 onClick={() => {
                   if (!canAdd || !selected || priceNow == null) return;
 
-                  // ✅ agrega al carrito real
                   add({
-                    product_id: product.id ?? selected.id, // si no tienes product.id, usamos selected.id como fallback
+                    product_id: product.id ?? selected.id,
                     title: product.title,
                     slug: product.slug ?? "",
                     image: selected.images?.[0] ?? null,
@@ -334,7 +309,6 @@ export function ProductView({
                     qty,
                   });
 
-                  // (opcional) compatibilidad con callback externo
                   onAddToCart?.(selected, qty);
                 }}
                 className={cn(
@@ -350,38 +324,19 @@ export function ProductView({
               </button>
             </div>
 
-            {/* TRUST LINE */}
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-black/60">
               <span className="inline-flex items-center gap-2">
-                <Image
-                  src="/icons/peru.gif"
-                  alt="Perú"
-                  width={22}
-                  height={22}
-                  unoptimized
-                />
+                <Image src="/icons/peru.gif" alt="Perú" width={22} height={22} unoptimized />
                 Envíos a todo el Perú
               </span>
 
               <span className="inline-flex items-center gap-2">
-                <Image
-                  src="/icons/security.gif"
-                  alt="Pago seguro"
-                  width={22}
-                  height={22}
-                  unoptimized
-                />
+                <Image src="/icons/security.gif" alt="Pago seguro" width={22} height={22} unoptimized />
                 Pago seguro
               </span>
 
               <span className="inline-flex items-center gap-2">
-                <Image
-                  src="/icons/soporte.gif"
-                  alt="Soporte"
-                  width={22}
-                  height={22}
-                  unoptimized
-                />
+                <Image src="/icons/soporte.gif" alt="Soporte" width={22} height={22} unoptimized />
                 Soporte a todo el Perú
               </span>
             </div>
@@ -415,58 +370,13 @@ export function ProductView({
             </div>
           ) : null}
 
-          {/* Accordions */}
-          <div className="mt-8 overflow-hidden rounded-lg border border-black/10">
-            <details
-              className="group border-b border-black/10 bg-white open:bg-[#fcfcfc]"
-              open
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-[13px] font-semibold uppercase tracking-[0.08em]">
-                Detalles
-                <span className="text-black/45 transition group-open:rotate-180">
-                  ⌄
-                </span>
-              </summary>
-              <div className="px-4 pb-4 text-[13px] leading-relaxed text-black/70">
-                {detailText ? (
-                  <p>{detailText}</p>
-                ) : (
-                  <p>
-                    Usa{" "}
-                    <code className="rounded bg-black/5 px-1">
-                      details.detail_text
-                    </code>
-                    .
-                  </p>
-                )}
-              </div>
-            </details>
-
-            <details className="group bg-white open:bg-[#fcfcfc]">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-[13px] font-semibold uppercase tracking-[0.08em]">
-                Envíos y cambios
-                <span className="text-black/45 transition group-open:rotate-180">
-                  ⌄
-                </span>
-              </summary>
-              <div className="px-4 pb-4 text-[13px] leading-relaxed text-black/70">
-                {shippingText ? (
-                  <p>{shippingText}</p>
-                ) : (
-                  <p>
-                    Usa{" "}
-                    <code className="rounded bg-black/5 px-1">
-                      details.shipping_text
-                    </code>
-                    .
-                  </p>
-                )}
-              </div>
-            </details>
+          {/* ✅ ACCORDIONS PRO */}
+          <div className="mt-8">
+            <ProductDetailsPanels details={product.details} />
           </div>
         </div>
 
-        {/* ======= PRODUCTOS SIMILARES (slot) ======= */}
+        {/* ======= SIMILARES ======= */}
         <aside className="hidden lg:block">
           {similarSlot ? (
             similarSlot
@@ -483,7 +393,6 @@ export function ProductView({
         </aside>
       </div>
 
-      {/* SIMILARES (mobile abajo) */}
       <div className="mt-10 lg:hidden">
         {similarSlot ? (
           similarSlot
