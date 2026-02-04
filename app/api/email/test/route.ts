@@ -1,94 +1,126 @@
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendOrderEmail } from "@/lib/email/mailer";
 import { buildOrderEmailHtml } from "@/lib/email/templates";
 
-export async function POST(req: Request) {
-  try {
-    const body = (await req.json()) as { to: string; mode?: "success" | "pending" | "failure" };
+type EmailMode = "success" | "pending" | "failure";
 
-    if (!body?.to) {
-      return NextResponse.json({ ok: false, message: "Falta 'to' (correo)" }, { status: 400 });
+function pickMode(v: string | null): EmailMode {
+  if (v === "success" || v === "pending" || v === "failure") return v;
+  return "pending";
+}
+
+function subjectFor(mode: EmailMode) {
+  if (mode === "success") return "✅ Pago confirmado — Smiggle Perú";
+  if (mode === "pending") return "⏳ Pedido recibido — Estamos verificando tu pago";
+  return "⚠️ No se pudo confirmar el pago — Smiggle Perú";
+}
+
+/**
+ * TEST EMAIL
+ * /api/email/test?to=correo@...&mode=pending&external_reference=smiggle_...
+ */
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+
+    const to = url.searchParams.get("to") || "";
+    const mode = pickMode(url.searchParams.get("mode"));
+    const external_reference = url.searchParams.get("external_reference");
+
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
+
+    if (!siteUrl) {
+      return NextResponse.json(
+        { ok: false, message: "Falta NEXT_PUBLIC_SITE_URL o NEXT_PUBLIC_APP_URL" },
+        { status: 500 }
+      );
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.smiggle-peru.com";
-    const mode = body.mode || "pending";
+    if (!to) {
+      return NextResponse.json(
+        { ok: false, message: "Falta ?to=correo@dominio.com" },
+        { status: 400 }
+      );
+    }
 
-    const meta =
-      mode === "success"
-        ? {
-            headline: "Pago aprobado",
-            badge: { label: "APROBADO", kind: "success" as const },
-            intro: "Tu pago fue confirmado. Ya estamos preparando tu pedido.",
-            subject: "Pago aprobado — Smiggle Perú",
-            cta: `${siteUrl}/checkout/success?external_reference=smiggle_demo_success`,
-          }
-        : mode === "failure"
-        ? {
-            headline: "Pago no confirmado",
-            badge: { label: "RECHAZADO", kind: "failure" as const },
-            intro: "No pudimos confirmar el pago. Puedes intentarlo nuevamente.",
-            subject: "Pago no confirmado — Smiggle Perú",
-            cta: `${siteUrl}/checkout/failure?external_reference=smiggle_demo_failure`,
-          }
-        : {
-            headline: "Pago en verificación",
-            badge: { label: "PENDIENTE", kind: "pending" as const },
-            intro: "Tu pago está en proceso. Te avisaremos apenas se confirme.",
-            subject: "Pedido recibido — Smiggle Perú",
-            cta: `${siteUrl}/checkout/pending?external_reference=smiggle_demo_pending`,
-          };
+    // 1) Trae una orden real si mandas external_reference
+    let order: any = null;
+
+    if (external_reference) {
+      const sb = supabaseAdmin();
+      const { data, error } = await sb
+        .from("orders")
+        .select("*")
+        .eq("external_reference", external_reference)
+        .single();
+
+      if (error) {
+        return NextResponse.json(
+          { ok: false, message: "No se encontró la orden por external_reference", error },
+          { status: 404 }
+        );
+      }
+
+      order = data;
+    } else {
+      // 2) Si no mandas external_reference, arma un ejemplo (mock)
+      order = {
+        external_reference: `smiggle_test_${Date.now()}`,
+        full_name: "Luis Pruebas",
+        email: to,
+        phone: "900000000",
+        dep_name: "Cajamarca",
+        prov_name: "Cajamarca",
+        dist_name: "Cajamarca",
+        address: "Av. Prueba 123",
+        reference: "Frente a la plaza",
+        shipping_type: "provincia_regular",
+        carrier: "Shalom",
+        subtotal: 223,
+        discount: 0,
+        shipping_cost: 16,
+        total: 239,
+        items: [
+          {
+            title: "Pack Escolar Smiggle (Demo)",
+            qty: 1,
+            unit_price: 223,
+            image: `${siteUrl}/brand/smiggle-logo.jpg`,
+            color_name: "Negro",
+            size_label: null,
+          },
+        ],
+      };
+    }
 
     const html = buildOrderEmailHtml({
-      brandName: "Smiggle Perú",
-      headline: meta.headline,
-      statusBadge: meta.badge,
-      intro: meta.intro,
-      external_reference: "smiggle_demo_123",
-      customerName: "Luis",
-      email: body.to,
-      items: [
-        {
-          title: "Mochila Smiggle Trailblazer",
-          qty: 1,
-          unit_price: 229,
-          image: "https://www.smiggle-peru.com/og.jpg",
-          color_name: "Azul",
-          size_label: null,
-        },
-        {
-          title: "Cartuchera Pop Out",
-          qty: 1,
-          unit_price: 79,
-          image: "https://www.smiggle-peru.com/og.jpg",
-        },
-      ],
-      subtotal: 308,
-      shipping: 16,
-      discount: 30,
-      total: 294,
-      shippingInfo: {
-        dep: "Lima",
-        prov: "Lima",
-        dist: "Miraflores",
-        address: "Av. La Marina 123, Dpto 402",
-        reference: "Frente al parque",
-        carrier: "Urbano Express",
-        shipping_type: "lima_regular",
-      },
-      ctaUrl: meta.cta,
-      ctaLabel: "Ver mi pedido",
-      footerNote: "Si no realizaste esta compra, responde a este correo.",
+      order,
+      mode,
+      siteUrl,
     });
 
     await sendOrderEmail({
-      to: body.to,
-      subject: meta.subject,
+      to,
+      subject: subjectFor(mode),
       html,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      sent_to: to,
+      mode,
+      external_reference: order.external_reference,
+      preview_url: `${siteUrl}/checkout/${mode}?external_reference=${encodeURIComponent(
+        order.external_reference
+      )}`,
+    });
   } catch (err: any) {
     console.error("email/test error:", err);
-    return NextResponse.json({ ok: false, message: "Error enviando correo" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, message: "Error enviando email de prueba" },
+      { status: 500 }
+    );
   }
 }
