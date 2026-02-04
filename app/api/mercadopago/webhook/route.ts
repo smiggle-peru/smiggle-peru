@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-// MP manda distintos formatos. Cubrimos ambos.
 type MPWebhookBody = {
   action?: string;
   api_version?: string;
@@ -9,7 +8,7 @@ type MPWebhookBody = {
   date_created?: string;
   id?: string;
   live_mode?: boolean;
-  type?: string; // "payment" | "merchant_order" | etc
+  type?: string; // "payment" | "merchant_order"
 };
 
 function toIsoOrNull(d: any) {
@@ -27,13 +26,10 @@ async function fetchPayment(accessToken: string, paymentId: string) {
 }
 
 async function fetchMerchantOrder(accessToken: string, moId: string) {
-  const r = await fetch(
-    `https://api.mercadopago.com/merchant_orders/${moId}`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
-    }
-  );
+  const r = await fetch(`https://api.mercadopago.com/merchant_orders/${moId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
   const j = await r.json();
   return { ok: r.ok, status: r.status, data: j };
 }
@@ -48,7 +44,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // MP a veces manda query params: ?type=payment&data.id=123
     const url = new URL(req.url);
     const qpType = url.searchParams.get("type") || undefined;
     const qpDataId = url.searchParams.get("data.id") || undefined;
@@ -63,37 +58,35 @@ export async function POST(req: Request) {
     const type = body?.type || qpType || "";
     const dataId = body?.data?.id || qpDataId || "";
 
-    // Responder rápido si no es algo que manejamos
-    if (!type || !dataId) {
-      return NextResponse.json({ ok: true, ignored: true });
-    }
+    if (!type || !dataId) return NextResponse.json({ ok: true, ignored: true });
 
     const sb = supabaseAdmin();
 
     // =========================================================
-    // 1) Si llega PAYMENT → consultamos /v1/payments/:id
+    // PAYMENT
     // =========================================================
     if (type === "payment") {
       const paymentId = String(dataId);
 
       const pay = await fetchPayment(accessToken, paymentId);
       if (!pay.ok) {
-        // Igual respondemos 200 para que MP no reintente infinito
         console.error("MP fetch payment failed:", pay.status, pay.data);
         return NextResponse.json({ ok: true, mp_fetch_failed: true });
       }
 
       const p = pay.data || {};
       const external_reference = p.external_reference as string | undefined;
-
       if (!external_reference) {
         console.error("Payment without external_reference:", p?.id);
         return NextResponse.json({ ok: true, no_external_reference: true });
       }
 
-      // Estados típicos: approved | pending | rejected | cancelled | in_process | refunded | charged_back
-      const payment_status = (p.status || "unknown") as string;
-      const payment_status_detail = (p.status_detail || null) as string | null;
+      // ✅ metadata que mandaste en create-preference
+      const mpMeta = (p.metadata || {}) as any;
+
+      // ✅ estados
+      const payment_status = String(p.status || "unknown");
+      const payment_status_detail = (p.status_detail ?? null) as string | null;
 
       const payment_type_id = (p.payment_type_id || null) as string | null;
       const payment_method_id = (p.payment_method_id || null) as string | null;
@@ -107,14 +100,42 @@ export async function POST(req: Request) {
 
       const currency_id = (p.currency_id || null) as string | null;
 
-      // paid_at: usamos date_approved si existe, si no date_created
       const paid_at =
         toIsoOrNull(p.date_approved) || toIsoOrNull(p.date_created);
 
-      const mp_merchant_order_id =
-        p.order?.id ? String(p.order.id) : null;
+      const mp_merchant_order_id = p.order?.id ? String(p.order.id) : null;
 
-      // Update order by external_reference
+      // ✅ 1) Trae metadata actual de la orden para NO pisarla
+      const { data: currentOrder, error: selErr } = await sb
+        .from("orders")
+        .select("metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name")
+        .eq("external_reference", external_reference)
+        .maybeSingle();
+
+      if (selErr) {
+        console.error("Supabase select order error:", selErr);
+        return NextResponse.json({ ok: true, supabase_select_failed: true });
+      }
+
+      const currentMeta = (currentOrder?.metadata || {}) as any;
+
+      // ✅ 2) Merge metadata (NO PISAR)
+      const mergedMeta = {
+        ...currentMeta,
+        checkout: currentMeta.checkout || mpMeta, // por si guardabas checkout aquí
+        mp_payment: p, // auditoría
+      };
+
+      // ✅ 3) Guarda ubigeo NOMBRES desde mp.metadata (CAMINO A)
+      const dep_id = mpMeta.dep_id ?? currentOrder?.dep_id ?? null;
+      const prov_id = mpMeta.prov_id ?? currentOrder?.prov_id ?? null;
+      const dist_id = mpMeta.dist_id ?? currentOrder?.dist_id ?? null;
+
+      const dep_name = mpMeta.dep_name ?? currentOrder?.dep_name ?? null;
+      const prov_name = mpMeta.prov_name ?? currentOrder?.prov_name ?? null;
+      const dist_name = mpMeta.dist_name ?? currentOrder?.dist_name ?? null;
+
+      // ✅ 4) Update orden
       const { error: updErr } = await sb
         .from("orders")
         .update({
@@ -129,10 +150,16 @@ export async function POST(req: Request) {
           currency_id: currency_id || "PEN",
           paid_at: payment_status === "approved" ? paid_at : null,
 
-          // guardamos el payment completo en metadata (auditoría)
-          metadata: {
-            mp_payment: p,
-          },
+          // ✅ ubigeo + nombres
+          dep_id,
+          prov_id,
+          dist_id,
+          dep_name,
+          prov_name,
+          dist_name,
+
+          // ✅ merge metadata
+          metadata: mergedMeta,
         })
         .eq("external_reference", external_reference);
 
@@ -145,8 +172,7 @@ export async function POST(req: Request) {
     }
 
     // =========================================================
-    // 2) Si llega MERCHANT_ORDER → consultamos /merchant_orders/:id
-    // (sirve cuando MP no manda payment directo en algunos flows)
+    // MERCHANT_ORDER
     // =========================================================
     if (type === "merchant_order") {
       const moId = String(dataId);
@@ -165,24 +191,43 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, no_external_reference: true });
       }
 
-      // merchant_order trae payments[]
       const payments = Array.isArray(m.payments) ? m.payments : [];
-
-      // Tomamos el pago más relevante (approved primero)
       const best =
         payments.find((x: any) => x.status === "approved") ||
         payments[0] ||
         null;
 
-      // Si hay payment_id, jalamos el payment completo (más confiable)
+      // si tenemos payment_id, lo mejor es jalar el payment y caer al flujo normal
       if (best?.id) {
         const pay = await fetchPayment(accessToken, String(best.id));
         if (pay.ok) {
           const p = pay.data || {};
-          const payment_status = (p.status || "unknown") as string;
-
+          const payment_status = String(p.status || "unknown");
           const paid_at =
             toIsoOrNull(p.date_approved) || toIsoOrNull(p.date_created);
+
+          const mpMeta = (p.metadata || {}) as any;
+
+          const { data: currentOrder } = await sb
+            .from("orders")
+            .select("metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name")
+            .eq("external_reference", external_reference)
+            .maybeSingle();
+
+          const currentMeta = (currentOrder?.metadata || {}) as any;
+          const mergedMeta = {
+            ...currentMeta,
+            mp_merchant_order: m,
+            mp_payment: p,
+          };
+
+          const dep_id = mpMeta.dep_id ?? currentOrder?.dep_id ?? null;
+          const prov_id = mpMeta.prov_id ?? currentOrder?.prov_id ?? null;
+          const dist_id = mpMeta.dist_id ?? currentOrder?.dist_id ?? null;
+
+          const dep_name = mpMeta.dep_name ?? currentOrder?.dep_name ?? null;
+          const prov_name = mpMeta.prov_name ?? currentOrder?.prov_name ?? null;
+          const dist_name = mpMeta.dist_name ?? currentOrder?.dist_name ?? null;
 
           const { error: updErr } = await sb
             .from("orders")
@@ -205,10 +250,14 @@ export async function POST(req: Request) {
 
               paid_at: payment_status === "approved" ? paid_at : null,
 
-              metadata: {
-                mp_merchant_order: m,
-                mp_payment: p,
-              },
+              dep_id,
+              prov_id,
+              dist_id,
+              dep_name,
+              prov_name,
+              dist_name,
+
+              metadata: mergedMeta,
             })
             .eq("external_reference", external_reference);
 
@@ -221,23 +270,32 @@ export async function POST(req: Request) {
         }
       }
 
-      // Si no pudimos obtener payment completo, igual guardamos merchant_order
+      // fallback: solo guarda merchant_order sin pisar metadata
+      const { data: currentOrder } = await sb
+        .from("orders")
+        .select("metadata")
+        .eq("external_reference", external_reference)
+        .maybeSingle();
+
+      const mergedMeta = {
+        ...((currentOrder?.metadata || {}) as any),
+        mp_merchant_order: m,
+      };
+
       await sb
         .from("orders")
         .update({
           mp_merchant_order_id: String(m.id),
-          metadata: { mp_merchant_order: m },
+          metadata: mergedMeta,
         })
         .eq("external_reference", external_reference);
 
       return NextResponse.json({ ok: true });
     }
 
-    // otros tipos: ignorar
     return NextResponse.json({ ok: true, ignored: true });
   } catch (err: any) {
     console.error("MP webhook error:", err);
-    // Importante: responder 200 para que no te spamee
     return NextResponse.json({ ok: true, error: "handled" });
   }
 }

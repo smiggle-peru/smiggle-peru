@@ -259,24 +259,35 @@ export default function CheckoutClient() {
     return { totalUnits: u, subtotal: s };
   }, [items]);
 
-  const depName = useMemo(() => {
-    const found = departments.find((d) => d.id === dep);
-    return found?.name ?? "";
-  }, [dep, departments]);
+  // ✅ Labels ubigeo (lo que pediste)
+  const depLabel = useMemo(
+    () => departments.find((x) => x.id === dep)?.name ?? "",
+    [departments, dep]
+  );
+
+  const provLabel = useMemo(
+    () => provinces.find((x) => x.id === prov)?.name ?? "",
+    [provinces, prov]
+  );
+
+  const distLabel = useMemo(
+    () => districts.find((x) => x.id === dist)?.name ?? "",
+    [districts, dist]
+  );
 
   // ✅ Lima/Callao
   const isLimaCallao = useMemo(() => {
-    const n = depName.trim().toLowerCase();
+    const n = depLabel.trim().toLowerCase();
     return n === "lima" || n === "callao";
-  }, [depName]);
+  }, [depLabel]);
 
   // Si estoy en provincia y estaba express, lo bajo
   useEffect(() => {
-    if (depName && !isLimaCallao && shippingType === "lima_express") {
+    if (depLabel && !isLimaCallao && shippingType === "lima_express") {
       setShippingType("provincia_regular");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [depName, isLimaCallao]);
+  }, [depLabel, isLimaCallao]);
 
   const shippingCost = useMemo(() => {
     if (!shippingType) return 0;
@@ -287,9 +298,9 @@ export default function CheckoutClient() {
   }, [shippingType]);
 
   const carrier = useMemo(() => {
-    if (!depName) return "";
+    if (!depLabel) return "";
     return isLimaCallao ? "Urbano Express" : "Shalom";
-  }, [depName, isLimaCallao]);
+  }, [depLabel, isLimaCallao]);
 
   // ✅ total (descuento SOLO a productos)
   const safeDiscount = useMemo(() => {
@@ -348,8 +359,8 @@ export default function CheckoutClient() {
     if (!dist) f.push("Distrito");
     if (address.trim().length < 6) f.push("Dirección");
 
-    // Envío según zona (solo valida si ya hay depName)
-    if (depName) {
+    // Envío según zona (solo valida si ya hay depLabel)
+    if (depLabel) {
       if (isLimaCallao) {
         if (shippingType !== "lima_regular" && shippingType !== "lima_express")
           f.push("Tipo de envío (Lima/Callao)");
@@ -379,7 +390,7 @@ export default function CheckoutClient() {
     prov,
     dist,
     address,
-    depName,
+    depLabel,
     isLimaCallao,
     shippingType,
     receiptType,
@@ -390,7 +401,7 @@ export default function CheckoutClient() {
 
   const canContinue = mounted && faltantes.length === 0;
 
-  // ✅ REEMPLAZADO: ir directo a MercadoPago (PEGAR TAL CUAL)
+  // ✅ IR DIRECTO A MERCADOPAGO + metadata con NOMBRES
   const onContinue = async () => {
     setSubmitted(true);
     if (!canContinue) return;
@@ -399,72 +410,46 @@ export default function CheckoutClient() {
     setPaying(true);
 
     try {
-      const payload = {
-        items: items.map((it) => ({
-          product_id: it.product_id, // uuid
-          variant_id: (it as any).variant_id ?? null, // si no tienes, queda null
-
-          title: it.title,
-          slug: it.slug,
-          image: it.image,
-
-          qty: Number(it.qty || 0),
-          unit_price: Number(it.price_now || 0),
-
-          color_name: it.color_name ?? null,
-          color_slug: it.color_slug ?? null,
-          size_label: it.size_label ?? null,
-
-          sku: (it as any).sku ?? null,
-        })),
-
-        shipping_cost: Number(shippingCost || 0),
-        discount: Number(safeDiscount || 0),
-        coupon_code: appliedCoupon ?? null,
-
-        customer: {
-          full_name: fullName,
-          email,
-          phone,
-          doc_type: docType,
-          doc_number: docNumber,
-        },
-
-        address: {
-          dep_id: dep,
-          prov_id: prov,
-          dist_id: dist,
-          address,
-          reference,
-        },
-
-        receipt: {
-          receipt_type: receiptType,
-          ruc: receiptType === "factura" ? ruc : null,
-          razon_social: receiptType === "factura" ? razonSocial : null,
-          direccion_fiscal: receiptType === "factura" ? direccionFiscal : null,
-        },
-
-        shipping: {
-          shipping_type: shippingType,
-          carrier,
-        },
-
-        payer: {
-          name: fullName,
-          email,
-          phone,
-        },
-
-        metadata: {
-          source: "checkout",
-        },
-      };
-
       const res = await fetch("/api/mercadopago/create-preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          items: items.map((it) => ({
+            product_id: it.product_id,
+            title: it.title,
+            qty: Number(it.qty || 0),
+            unit_price: Number(it.price_now || 0),
+          })),
+          shipping_cost: Number(shippingCost || 0),
+          discount: Number(safeDiscount || 0),
+          payer: { name: fullName, email, phone },
+          metadata: {
+            // ubigeo
+            dep_id: dep,
+            prov_id: prov,
+            dist_id: dist,
+            dep_name: depLabel,
+            prov_name: provLabel,
+            dist_name: distLabel,
+
+            // extra útil
+            address,
+            reference,
+            shipping_type: shippingType,
+            carrier,
+            receipt_type: receiptType,
+            doc_type: docType,
+            doc_number: docNumber,
+            ruc: receiptType === "factura" ? ruc : null,
+            razon_social: receiptType === "factura" ? razonSocial : null,
+            direccion_fiscal: receiptType === "factura" ? direccionFiscal : null,
+
+            // cupón
+            coupon: appliedCoupon,
+            discount: Number(safeDiscount || 0),
+            shipping_cost: Number(shippingCost || 0),
+          },
+        }),
       });
 
       const data = await res.json();
@@ -1074,7 +1059,7 @@ export default function CheckoutClient() {
               }
             />
 
-            {depName && carrier ? (
+            {depLabel && carrier ? (
               <Row
                 label="Carrier"
                 value={<span className="text-black">{carrier}</span>}
@@ -1085,7 +1070,7 @@ export default function CheckoutClient() {
             <Row label="Total" value={money(mounted ? total : 0)} strong />
           </div>
 
-          {/* ✅ BOTÓN CAMBIADO (PEGAR) */}
+          {/* ✅ BOTÓN */}
           <button
             disabled={!canContinue || paying}
             className="mt-5 h-12 w-full rounded-full bg-[#2f2f2f] text-[13px] font-semibold text-white transition hover:bg-[#262626] disabled:cursor-not-allowed disabled:opacity-50"
