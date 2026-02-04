@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+// ✅ EMAIL
+import { sendOrderEmail } from "@/lib/email/mailer";
+import { orderEmailTemplate } from "@/lib/email/templates";
+
 type MPWebhookBody = {
   action?: string;
   api_version?: string;
@@ -32,6 +36,94 @@ async function fetchMerchantOrder(accessToken: string, moId: string) {
   });
   const j = await r.json();
   return { ok: r.ok, status: r.status, data: j };
+}
+
+// ✅ helper: env + email success/failure
+async function maybeSendSuccessFailureEmail(sb: any, args: {
+  external_reference: string;
+  payment_status: string;
+}) {
+  const { external_reference, payment_status } = args;
+
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || "https://www.smiggle-peru.com";
+
+  // trae la orden completa para armar el template
+  const { data: order, error } = await sb
+    .from("orders")
+    .select(
+      "id,email,full_name,external_reference,items,subtotal,shipping_cost,discount,total,email_success_sent_at,email_failure_sent_at"
+    )
+    .eq("external_reference", external_reference)
+    .maybeSingle();
+
+  if (error) {
+    console.error("webhook email: select order error:", error);
+    return;
+  }
+
+  if (!order?.email) return;
+
+  try {
+    // SUCCESS
+    if (payment_status === "approved" && !order.email_success_sent_at) {
+      await sendOrderEmail({
+        to: order.email,
+        subject: "Pago aprobado — Smiggle Perú",
+        html: orderEmailTemplate({
+          title: "Pago aprobado",
+          badge: "APROBADO",
+          external_reference: order.external_reference,
+          customerName: order.full_name || "cliente",
+          items: Array.isArray(order.items) ? order.items : [],
+          subtotal: order.subtotal || 0,
+          shipping: order.shipping_cost || 0,
+          discount: order.discount || 0,
+          total: order.total || 0,
+          statusLine: "¡tu pago fue aprobado! Ya estamos preparando tu pedido.",
+          ctaUrl: `${siteUrl}/checkout/success?external_reference=${order.external_reference}`,
+        }),
+      });
+
+      await sb
+        .from("orders")
+        .update({ email_success_sent_at: new Date().toISOString() })
+        .eq("id", order.id);
+    }
+
+    // FAILURE
+    const failed = ["rejected", "cancelled", "charged_back"].includes(
+      String(payment_status)
+    );
+
+    if (failed && !order.email_failure_sent_at) {
+      await sendOrderEmail({
+        to: order.email,
+        subject: "Pago no confirmado — Smiggle Perú",
+        html: orderEmailTemplate({
+          title: "Pago no confirmado",
+          badge: "RECHAZADO",
+          external_reference: order.external_reference,
+          customerName: order.full_name || "cliente",
+          items: Array.isArray(order.items) ? order.items : [],
+          subtotal: order.subtotal || 0,
+          shipping: order.shipping_cost || 0,
+          discount: order.discount || 0,
+          total: order.total || 0,
+          statusLine: "no se pudo confirmar el pago. Puedes intentar nuevamente.",
+          ctaUrl: `${siteUrl}/checkout/failure?external_reference=${order.external_reference}`,
+        }),
+      });
+
+      await sb
+        .from("orders")
+        .update({ email_failure_sent_at: new Date().toISOString() })
+        .eq("id", order.id);
+    }
+  } catch (e) {
+    // ⚠️ no rompas webhook por fallo de email
+    console.error("webhook email send error:", e);
+  }
 }
 
 export async function POST(req: Request) {
@@ -108,7 +200,9 @@ export async function POST(req: Request) {
       // ✅ 1) Trae metadata actual de la orden para NO pisarla
       const { data: currentOrder, error: selErr } = await sb
         .from("orders")
-        .select("metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name")
+        .select(
+          "metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name"
+        )
         .eq("external_reference", external_reference)
         .maybeSingle();
 
@@ -168,6 +262,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, supabase_update_failed: true });
       }
 
+      // ✅ 5) EMAIL success / failure (después del update)
+      await maybeSendSuccessFailureEmail(sb, {
+        external_reference,
+        payment_status,
+      });
+
       return NextResponse.json({ ok: true });
     }
 
@@ -210,7 +310,9 @@ export async function POST(req: Request) {
 
           const { data: currentOrder } = await sb
             .from("orders")
-            .select("metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name")
+            .select(
+              "metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name"
+            )
             .eq("external_reference", external_reference)
             .maybeSingle();
 
@@ -265,6 +367,12 @@ export async function POST(req: Request) {
             console.error("Supabase update order error:", updErr);
             return NextResponse.json({ ok: true, supabase_update_failed: true });
           }
+
+          // ✅ EMAIL success / failure
+          await maybeSendSuccessFailureEmail(sb, {
+            external_reference,
+            payment_status,
+          });
 
           return NextResponse.json({ ok: true });
         }

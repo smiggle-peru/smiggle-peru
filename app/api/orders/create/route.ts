@@ -6,6 +6,10 @@ import {
   getDistrictsByProvince,
 } from "@/lib/ubigeo";
 
+// ✅ EMAIL
+import { sendOrderEmail } from "@/lib/email/mailer";
+import { orderEmailTemplate } from "@/lib/email/templates";
+
 type CartItem = {
   product_id: string;
   title: string;
@@ -189,14 +193,18 @@ export async function POST(req: Request) {
       })),
 
       coupon: body.coupon ?? null,
-
       metadata: body.metadata ?? {},
+
+      // ✅ opcional: si ya tienes estos campos en DB, déjalos; si no, quítalos
+      // email_pending_sent_at: null,
+      // email_paid_sent_at: null,
     };
 
     const { data, error } = await sb
       .from("orders")
       .insert(payload)
-      .select("id, external_reference")
+      // 👇 importante: también traer email_pending_sent_at para evitar reenvíos
+      .select("id, external_reference, email_pending_sent_at")
       .single();
 
     if (error) {
@@ -205,6 +213,41 @@ export async function POST(req: Request) {
         { ok: false, message: "No se pudo crear order", error },
         { status: 500 }
       );
+    }
+
+    // ✅ EMAIL PENDIENTE (después del insert OK)
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL || "https://www.smiggle-peru.com";
+
+    try {
+      if (payload.email && !data.email_pending_sent_at) {
+        await sendOrderEmail({
+          to: payload.email,
+          subject: "Recibimos tu pedido — Smiggle Perú",
+          html: orderEmailTemplate({
+            title: "Pedido recibido",
+            badge: "PENDIENTE",
+            external_reference: data.external_reference,
+            customerName: payload.full_name || "cliente",
+            items: Array.isArray(payload.items) ? payload.items : [],
+            subtotal: payload.subtotal || 0,
+            shipping: payload.shipping_cost || 0,
+            discount: payload.discount || 0,
+            total: payload.total || 0,
+            statusLine:
+              "estamos procesando tu pago. Te avisaremos apenas se confirme.",
+            ctaUrl: `${siteUrl}/checkout/pending?external_reference=${data.external_reference}`,
+          }),
+        });
+
+        await sb
+          .from("orders")
+          .update({ email_pending_sent_at: new Date().toISOString() })
+          .eq("id", data.id);
+      }
+    } catch (e) {
+      // ⚠️ No rompas la creación de la orden por error de email
+      console.error("orders/create email pending error:", e);
     }
 
     return NextResponse.json({
