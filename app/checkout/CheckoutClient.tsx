@@ -52,6 +52,9 @@ export default function CheckoutClient() {
   const cart = useCart();
   const items = (cart?.items ?? []) as CartItem[];
 
+  // ✅ Pago MP (loading)
+  const [paying, setPaying] = useState(false);
+
   // UBIGEO
   const [departments, setDepartments] = useState<UbigeoOption[]>([]);
   const [provinces, setProvinces] = useState<UbigeoOption[]>([]);
@@ -387,11 +390,69 @@ export default function CheckoutClient() {
 
   const canContinue = mounted && faltantes.length === 0;
 
-  const onContinue = () => {
+  // ✅ AHORA: ir directo a Mercado Pago
+  const onContinue = async () => {
     setSubmitted(true);
     if (!canContinue) return;
 
-    // next step...
+    try {
+      setPaying(true);
+
+      const payload = {
+        items: items.map((it) => ({
+          key: it.key,
+          product_id: it.product_id,
+          title: it.title,
+          qty: Number(it.qty || 1),
+          price_now: Number(it.price_now || 0),
+        })),
+        discount: Number(safeDiscount || 0), // descuento SOLO productos
+        shippingCost: Number(shippingCost || 0),
+
+        customer: {
+          fullName,
+          email,
+          phone,
+          docType,
+          docNumber,
+        },
+        address: {
+          dep,
+          prov,
+          dist,
+          address,
+          reference,
+        },
+        receipt: {
+          receiptType,
+          ruc,
+          razonSocial,
+          direccionFiscal,
+        },
+      };
+
+      const res = await fetch("/api/mercadopago/create-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!data?.ok || !data?.init_point) {
+        console.error("MP create preference failed:", data);
+        alert(data?.message || "No se pudo iniciar el pago. Intenta otra vez.");
+        setPaying(false);
+        return;
+      }
+
+      // ✅ Redirige a Mercado Pago
+      window.location.href = data.init_point;
+    } catch (e) {
+      console.error(e);
+      alert("Error iniciando pago con Mercado Pago.");
+      setPaying(false);
+    }
   };
 
   // ===== CUPÓN helpers
@@ -959,11 +1020,7 @@ export default function CheckoutClient() {
             {safeDiscount > 0 ? (
               <Row
                 label="Descuento"
-                value={
-                  <span className="text-green-700">
-                    - {money(safeDiscount)}
-                  </span>
-                }
+                value={<span className="text-green-700">- {money(safeDiscount)}</span>}
               />
             ) : null}
 
@@ -990,11 +1047,11 @@ export default function CheckoutClient() {
           </div>
 
           <button
-            disabled={!canContinue}
+            disabled={!canContinue || paying}
             className="mt-5 h-12 w-full rounded-full bg-[#2f2f2f] text-[13px] font-semibold text-white transition hover:bg-[#262626] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onContinue}
           >
-            Continuar
+            {paying ? "Redirigiendo a Mercado Pago..." : "Pagar con Mercado Pago"}
           </button>
 
           <Link
@@ -1068,9 +1125,7 @@ export default function CheckoutClient() {
                   aria-label="Cerrar"
                   title="Cerrar"
                 >
-                  <span className="text-[18px] leading-none text-black/70">
-                    ×
-                  </span>
+                  <span className="text-[18px] leading-none text-black/70">×</span>
                 </button>
               </div>
             </div>
@@ -1138,14 +1193,10 @@ export default function CheckoutClient() {
               {appliedCoupon ? (
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-black/10 bg-white p-3">
                   <div className="min-w-0">
-                    <div className="text-[12px] text-black/55">
-                      Cupón aplicado
-                    </div>
+                    <div className="text-[12px] text-black/55">Cupón aplicado</div>
                     <div className="truncate text-[13px] font-semibold text-black">
                       {appliedCoupon} <span className="text-black/40">·</span>{" "}
-                      <span className="text-green-700">
-                        -{money(safeDiscount)}
-                      </span>
+                      <span className="text-green-700">-{money(safeDiscount)}</span>
                     </div>
                   </div>
 
