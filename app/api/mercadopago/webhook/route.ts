@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-// ✅ EMAIL (nuevo)
+// ✅ EMAIL
 import { sendOrderEmail } from "@/lib/email/mailer";
 import { buildOrderEmailHtml } from "@/lib/email/templates";
 
@@ -38,8 +38,31 @@ async function fetchMerchantOrder(accessToken: string, moId: string) {
   return { ok: r.ok, status: r.status, data: j };
 }
 
-// ✅ helper: env + email success/failure (SIN orderEmailTemplate)
-async function maybeSendSuccessFailureEmail(
+function resolveMode(payment_status: string) {
+  const s = String(payment_status || "").toLowerCase();
+
+  if (s === "approved") return "success" as const;
+
+  // MP suele usar "in_process" cuando aún se está procesando
+  if (s === "pending" || s === "in_process") return "pending" as const;
+
+  return "failure" as const;
+}
+
+function emailSubjectByMode(mode: "success" | "pending" | "failure") {
+  if (mode === "success") return "✅ Pago confirmado — Smiggle Perú";
+  if (mode === "pending") return "⏳ Pedido recibido — Estamos verificando tu pago";
+  return "⚠️ No se pudo confirmar el pago — Smiggle Perú";
+}
+
+function shouldMarkFailure(payment_status: string) {
+  const s = String(payment_status || "").toLowerCase();
+  // lista razonable de estados finales negativos
+  return ["rejected", "cancelled", "charged_back", "refunded"].includes(s);
+}
+
+// ✅ helper: env + email success/pending/failure (SIN orderEmailTemplate)
+async function maybeSendOrderEmail(
   sb: any,
   args: { external_reference: string; payment_status: string }
 ) {
@@ -58,7 +81,6 @@ async function maybeSendSuccessFailureEmail(
     .single();
 
   if (error) {
-    // si no existe, single() devuelve error -> no romper webhook
     console.error("webhook email: select order error:", error);
     return;
   }
@@ -66,64 +88,78 @@ async function maybeSendSuccessFailureEmail(
   if (!order?.email) return;
 
   try {
-    // SUCCESS
-    if (payment_status === "approved" && !order.email_success_sent_at) {
-      const mode = "success" as const;
+    const mode = resolveMode(payment_status);
 
-      const subject = "✅ Pago confirmado — Smiggle Perú";
+    // ✅ SUCCESS (1 sola vez)
+    if (mode === "success" && !order.email_success_sent_at) {
+      const subject = emailSubjectByMode("success");
 
       const html = buildOrderEmailHtml({
         order,
-        mode,
+        mode: "success",
         siteUrl,
       });
 
-      await sendOrderEmail({
-        to: order.email,
-        subject,
-        html,
-      });
+      await sendOrderEmail({ to: order.email, subject, html });
 
       await sb
         .from("orders")
-        .update({ email_success_sent_at: new Date().toISOString() })
+        .update({
+          email_success_sent_at: new Date().toISOString(),
+          // opcional: si quieres “limpiar” flags previos
+          // email_pending_sent_at: null,
+          // email_failure_sent_at: null,
+        })
         .eq("id", order.id);
 
       return;
     }
 
-    // FAILURE
-    const failed = ["rejected", "cancelled", "charged_back"].includes(
-      String(payment_status)
-    );
-
-    if (failed && !order.email_failure_sent_at) {
-      const mode = "failure" as const;
-
-      const subject = "⚠️ No se pudo confirmar el pago — Smiggle Perú";
+    // ✅ PENDING (1 sola vez)
+    // OJO: puede llegar antes del aprobado, así que lo mandamos si aún no se mandó
+    if (mode === "pending" && !order.email_pending_sent_at) {
+      const subject = emailSubjectByMode("pending");
 
       const html = buildOrderEmailHtml({
         order,
-        mode,
+        mode: "pending",
         siteUrl,
       });
 
-      await sendOrderEmail({
-        to: order.email,
-        subject,
-        html,
-      });
+      await sendOrderEmail({ to: order.email, subject, html });
 
       await sb
         .from("orders")
-        .update({ email_failure_sent_at: new Date().toISOString() })
+        .update({
+          email_pending_sent_at: new Date().toISOString(),
+        })
         .eq("id", order.id);
 
       return;
     }
 
-    // (Opcional) PENDING: si luego quieres enviar correo “pendiente”,
-    // recomienda agregar columna email_pending_sent_at para evitar duplicados.
+    // ✅ FAILURE (solo si el estado es realmente final negativo)
+    const isRealFailure = shouldMarkFailure(payment_status);
+    if (isRealFailure && !order.email_failure_sent_at) {
+      const subject = emailSubjectByMode("failure");
+
+      const html = buildOrderEmailHtml({
+        order,
+        mode: "failure",
+        siteUrl,
+      });
+
+      await sendOrderEmail({ to: order.email, subject, html });
+
+      await sb
+        .from("orders")
+        .update({
+          email_failure_sent_at: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+
+      return;
+    }
   } catch (e) {
     // ⚠️ no rompas webhook por fallo de email
     console.error("webhook email send error:", e);
@@ -177,10 +213,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, no_external_reference: true });
       }
 
-      // ✅ metadata que mandaste en create-preference
       const mpMeta = (p.metadata || {}) as any;
 
-      // ✅ estados
       const payment_status = String(p.status || "unknown");
       const payment_status_detail = (p.status_detail ?? null) as string | null;
 
@@ -218,10 +252,10 @@ export async function POST(req: Request) {
       const mergedMeta = {
         ...currentMeta,
         checkout: currentMeta.checkout || mpMeta,
-        mp_payment: p, // auditoría
+        mp_payment: p,
       };
 
-      // ✅ 3) Guarda ubigeo NOMBRES desde mp.metadata
+      // ✅ 3) Ubigeo
       const dep_id = mpMeta.dep_id ?? currentOrder?.dep_id ?? null;
       const prov_id = mpMeta.prov_id ?? currentOrder?.prov_id ?? null;
       const dist_id = mpMeta.dist_id ?? currentOrder?.dist_id ?? null;
@@ -262,8 +296,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, supabase_update_failed: true });
       }
 
-      // ✅ 5) EMAIL success / failure (después del update)
-      await maybeSendSuccessFailureEmail(sb, {
+      // ✅ 5) EMAIL success / pending / failure
+      await maybeSendOrderEmail(sb, {
         external_reference,
         payment_status,
       });
@@ -362,8 +396,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ ok: true, supabase_update_failed: true });
           }
 
-          // ✅ EMAIL success / failure
-          await maybeSendSuccessFailureEmail(sb, {
+          // ✅ EMAIL success / pending / failure
+          await maybeSendOrderEmail(sb, {
             external_reference,
             payment_status,
           });
