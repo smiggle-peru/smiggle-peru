@@ -1,19 +1,21 @@
 @import "tailwindcss";
 
 /* =========================
-   VARIABLES GLOBALES
+   FORZAR LIGHT MODE GLOBAL
+   (Samsung / Android / iOS)
 ========================= */
 :root {
   --background: #ffffff;
   --foreground: #000000;
+
+  /* 🔒 Obliga light mode aunque el sistema esté en dark */
+  color-scheme: light;
 }
 
-/* Dark mode (opcional) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Evita “auto darkening” y ajustes raros de texto */
+html {
+  -webkit-text-size-adjust: 100%;
+  color-scheme: light;
 }
 
 /* =========================
@@ -21,15 +23,16 @@
 ========================= */
 @layer base {
   html {
-    font-family: var(--font-roboto), system-ui, -apple-system, BlinkMacSystemFont,
-      "Segoe UI", sans-serif;
+    font-family: var(--font-roboto), system-ui, -apple-system,
+      BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
   body {
-    background: var(--background);
-    color: var(--foreground);
+    background: #ffffff; /* 🔒 fondo blanco real */
+    color: #000000;
     font-size: 14px;
     font-weight: 400;
+    margin: 0;
   }
 }
 
@@ -54,29 +57,22 @@
 }
 
 /* =========================
-   ANIMACIÓN GRADIENTE
+   ANIMACIONES
 ========================= */
 @keyframes gradientMove {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .animate-gradient {
   animation: gradientMove 3s ease infinite;
-}
-
-
-html,
-body {
-  overflow-x: hidden;
-}
-
-:root {
-  color-scheme: light;
-}
-html {
-  color-scheme: light;
 }
 
 @keyframes license-marquee {
@@ -88,20 +84,20 @@ html {
   }
 }
 
+/* =========================
+   LAYOUT GLOBAL
+========================= */
 html,
 body {
   height: 100%;
-}
-
-body {
-  margin: 0;
   overflow-x: hidden;
 }
 
+/* =========================
+   UI UTILIDADES
+========================= */
 /* ✅ vuelve la bolsa roja cuando hay items */
 .cart-bag-red {
   filter: brightness(0) saturate(100%) invert(18%) sepia(92%) saturate(6164%)
     hue-rotate(355deg) brightness(95%) contrast(110%);
 }
-
-

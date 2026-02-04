@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Roboto } from "next/font/google";
@@ -11,12 +11,16 @@ const roboto = Roboto({
   display: "swap",
 });
 
+/* 🔒 FUERZA LIGHT MODE A NIVEL NAVEGADOR */
+export const viewport: Viewport = {
+  themeColor: "#F6F7F9", // color base de tu UI
+  colorScheme: "light",  // ✅ CLAVE
+};
+
 export const metadata: Metadata = {
   title: "Smiggle Perú | Los creadores de la papelería más divertida",
   description:
     "Smiggle, los creadores de la papelería más divertida. Encuentra mochilas, loncheras, cartucheras y accesorios para el colegio. Compra online.",
-  themeColor: "#ffffff",
-  colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -27,14 +31,15 @@ export default function RootLayout({
   return (
     <html lang="es" className={roboto.variable}>
       <head>
+        {/* 🔒 Refuerzo explícito (por si algún navegador se pone creativo) */}
         <meta name="color-scheme" content="light" />
       </head>
 
-      {/* ✅ Fondo global: header y footer sobre blanco */}
-      <body className="min-h-screen flex flex-col bg-white">
+      {/* ✅ Fondo global SIEMPRE blanco */}
+      <body className="min-h-screen flex flex-col bg-white text-black">
         <Header />
 
-        {/* ✅ Main full width (cada página decide si usa contenedor) */}
+        {/* Cada página decide si usa container o full width */}
         <main className="flex-1 w-full">{children}</main>
 
         <Footer />
