@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-// ✅ EMAIL
+// ✅ EMAIL (nuevo)
 import { sendOrderEmail } from "@/lib/email/mailer";
 import { buildOrderEmailHtml } from "@/lib/email/templates";
 
@@ -38,26 +38,27 @@ async function fetchMerchantOrder(accessToken: string, moId: string) {
   return { ok: r.ok, status: r.status, data: j };
 }
 
-// ✅ helper: env + email success/failure
-async function maybeSendSuccessFailureEmail(sb: any, args: {
-  external_reference: string;
-  payment_status: string;
-}) {
+// ✅ helper: env + email success/failure (SIN orderEmailTemplate)
+async function maybeSendSuccessFailureEmail(
+  sb: any,
+  args: { external_reference: string; payment_status: string }
+) {
   const { external_reference, payment_status } = args;
 
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://www.smiggle-peru.com";
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "https://www.smiggle-peru.com";
 
-  // trae la orden completa para armar el template
+  // ✅ trae la orden completa (SI NO HAY ORDER, NO ENVÍA)
   const { data: order, error } = await sb
     .from("orders")
-    .select(
-      "id,email,full_name,external_reference,items,subtotal,shipping_cost,discount,total,email_success_sent_at,email_failure_sent_at"
-    )
+    .select("*")
     .eq("external_reference", external_reference)
-    .maybeSingle();
+    .single();
 
   if (error) {
+    // si no existe, single() devuelve error -> no romper webhook
     console.error("webhook email: select order error:", error);
     return;
   }
@@ -67,28 +68,28 @@ async function maybeSendSuccessFailureEmail(sb: any, args: {
   try {
     // SUCCESS
     if (payment_status === "approved" && !order.email_success_sent_at) {
+      const mode = "success" as const;
+
+      const subject = "✅ Pago confirmado — Smiggle Perú";
+
+      const html = buildOrderEmailHtml({
+        order,
+        mode,
+        siteUrl,
+      });
+
       await sendOrderEmail({
         to: order.email,
-        subject: "Pago aprobado — Smiggle Perú",
-        html: orderEmailTemplate({
-          title: "Pago aprobado",
-          badge: "APROBADO",
-          external_reference: order.external_reference,
-          customerName: order.full_name || "cliente",
-          items: Array.isArray(order.items) ? order.items : [],
-          subtotal: order.subtotal || 0,
-          shipping: order.shipping_cost || 0,
-          discount: order.discount || 0,
-          total: order.total || 0,
-          statusLine: "¡tu pago fue aprobado! Ya estamos preparando tu pedido.",
-          ctaUrl: `${siteUrl}/checkout/success?external_reference=${order.external_reference}`,
-        }),
+        subject,
+        html,
       });
 
       await sb
         .from("orders")
         .update({ email_success_sent_at: new Date().toISOString() })
         .eq("id", order.id);
+
+      return;
     }
 
     // FAILURE
@@ -97,29 +98,32 @@ async function maybeSendSuccessFailureEmail(sb: any, args: {
     );
 
     if (failed && !order.email_failure_sent_at) {
+      const mode = "failure" as const;
+
+      const subject = "⚠️ No se pudo confirmar el pago — Smiggle Perú";
+
+      const html = buildOrderEmailHtml({
+        order,
+        mode,
+        siteUrl,
+      });
+
       await sendOrderEmail({
         to: order.email,
-        subject: "Pago no confirmado — Smiggle Perú",
-        html: orderEmailTemplate({
-          title: "Pago no confirmado",
-          badge: "RECHAZADO",
-          external_reference: order.external_reference,
-          customerName: order.full_name || "cliente",
-          items: Array.isArray(order.items) ? order.items : [],
-          subtotal: order.subtotal || 0,
-          shipping: order.shipping_cost || 0,
-          discount: order.discount || 0,
-          total: order.total || 0,
-          statusLine: "no se pudo confirmar el pago. Puedes intentar nuevamente.",
-          ctaUrl: `${siteUrl}/checkout/failure?external_reference=${order.external_reference}`,
-        }),
+        subject,
+        html,
       });
 
       await sb
         .from("orders")
         .update({ email_failure_sent_at: new Date().toISOString() })
         .eq("id", order.id);
+
+      return;
     }
+
+    // (Opcional) PENDING: si luego quieres enviar correo “pendiente”,
+    // recomienda agregar columna email_pending_sent_at para evitar duplicados.
   } catch (e) {
     // ⚠️ no rompas webhook por fallo de email
     console.error("webhook email send error:", e);
@@ -192,17 +196,14 @@ export async function POST(req: Request) {
 
       const currency_id = (p.currency_id || null) as string | null;
 
-      const paid_at =
-        toIsoOrNull(p.date_approved) || toIsoOrNull(p.date_created);
+      const paid_at = toIsoOrNull(p.date_approved) || toIsoOrNull(p.date_created);
 
       const mp_merchant_order_id = p.order?.id ? String(p.order.id) : null;
 
       // ✅ 1) Trae metadata actual de la orden para NO pisarla
       const { data: currentOrder, error: selErr } = await sb
         .from("orders")
-        .select(
-          "metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name"
-        )
+        .select("metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name")
         .eq("external_reference", external_reference)
         .maybeSingle();
 
@@ -216,11 +217,11 @@ export async function POST(req: Request) {
       // ✅ 2) Merge metadata (NO PISAR)
       const mergedMeta = {
         ...currentMeta,
-        checkout: currentMeta.checkout || mpMeta, // por si guardabas checkout aquí
+        checkout: currentMeta.checkout || mpMeta,
         mp_payment: p, // auditoría
       };
 
-      // ✅ 3) Guarda ubigeo NOMBRES desde mp.metadata (CAMINO A)
+      // ✅ 3) Guarda ubigeo NOMBRES desde mp.metadata
       const dep_id = mpMeta.dep_id ?? currentOrder?.dep_id ?? null;
       const prov_id = mpMeta.prov_id ?? currentOrder?.prov_id ?? null;
       const dist_id = mpMeta.dist_id ?? currentOrder?.dist_id ?? null;
@@ -235,6 +236,7 @@ export async function POST(req: Request) {
         .update({
           mp_payment_id: String(p.id),
           mp_merchant_order_id,
+
           payment_status,
           payment_status_detail,
           payment_type_id,
@@ -244,7 +246,6 @@ export async function POST(req: Request) {
           currency_id: currency_id || "PEN",
           paid_at: payment_status === "approved" ? paid_at : null,
 
-          // ✅ ubigeo + nombres
           dep_id,
           prov_id,
           dist_id,
@@ -252,7 +253,6 @@ export async function POST(req: Request) {
           prov_name,
           dist_name,
 
-          // ✅ merge metadata
           metadata: mergedMeta,
         })
         .eq("external_reference", external_reference);
@@ -293,11 +293,9 @@ export async function POST(req: Request) {
 
       const payments = Array.isArray(m.payments) ? m.payments : [];
       const best =
-        payments.find((x: any) => x.status === "approved") ||
-        payments[0] ||
-        null;
+        payments.find((x: any) => x.status === "approved") || payments[0] || null;
 
-      // si tenemos payment_id, lo mejor es jalar el payment y caer al flujo normal
+      // si tenemos payment_id, jala payment y cae al flujo normal
       if (best?.id) {
         const pay = await fetchPayment(accessToken, String(best.id));
         if (pay.ok) {
@@ -310,13 +308,12 @@ export async function POST(req: Request) {
 
           const { data: currentOrder } = await sb
             .from("orders")
-            .select(
-              "metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name"
-            )
+            .select("metadata, dep_id, prov_id, dist_id, dep_name, prov_name, dist_name")
             .eq("external_reference", external_reference)
             .maybeSingle();
 
           const currentMeta = (currentOrder?.metadata || {}) as any;
+
           const mergedMeta = {
             ...currentMeta,
             mp_merchant_order: m,
@@ -342,12 +339,9 @@ export async function POST(req: Request) {
 
               payment_type_id: p.payment_type_id || null,
               payment_method_id: p.payment_method_id || null,
-              installments:
-                typeof p.installments === "number" ? p.installments : null,
+              installments: typeof p.installments === "number" ? p.installments : null,
               transaction_amount:
-                typeof p.transaction_amount === "number"
-                  ? p.transaction_amount
-                  : null,
+                typeof p.transaction_amount === "number" ? p.transaction_amount : null,
               currency_id: p.currency_id || "PEN",
 
               paid_at: payment_status === "approved" ? paid_at : null,
