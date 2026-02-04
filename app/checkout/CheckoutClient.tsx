@@ -259,7 +259,7 @@ export default function CheckoutClient() {
     return { totalUnits: u, subtotal: s };
   }, [items]);
 
-  // ✅ Labels ubigeo (lo que pediste)
+  // ✅ Labels ubigeo
   const depLabel = useMemo(
     () => departments.find((x) => x.id === dep)?.name ?? "",
     [departments, dep]
@@ -307,7 +307,7 @@ export default function CheckoutClient() {
     const s = Number(subtotal || 0);
     const d = Number(discount || 0);
     if (s <= 0 || d <= 0) return 0;
-    return Math.min(d, s); // nunca más que subtotal
+    return Math.min(d, s);
   }, [subtotal, discount]);
 
   const total = useMemo(() => {
@@ -359,7 +359,6 @@ export default function CheckoutClient() {
     if (!dist) f.push("Distrito");
     if (address.trim().length < 6) f.push("Dirección");
 
-    // Envío según zona (solo valida si ya hay depLabel)
     if (depLabel) {
       if (isLimaCallao) {
         if (shippingType !== "lima_regular" && shippingType !== "lima_express")
@@ -370,7 +369,6 @@ export default function CheckoutClient() {
       }
     }
 
-    // Factura
     if (receiptType === "factura") {
       if (!validarRUC()) f.push("RUC (11 dígitos)");
       if (razonSocial.trim().length < 3) f.push("Razón social");
@@ -401,19 +399,91 @@ export default function CheckoutClient() {
 
   const canContinue = mounted && faltantes.length === 0;
 
-  // ✅ IR DIRECTO A MERCADOPAGO + metadata con NOMBRES
+  // ✅ FLUJO EXACTO:
+  // 1️⃣ /api/orders/create
+  // 2️⃣ /api/mercadopago/create-preference pasando external_reference
   const onContinue = async () => {
     setSubmitted(true);
     if (!canContinue) return;
-
     if (paying) return;
+
     setPaying(true);
 
     try {
-      const res = await fetch("/api/mercadopago/create-preference", {
+      // ========= 1) payload completo para crear orden =========
+      const payload = {
+        fullName,
+        docType,
+        docNumber,
+        phone,
+        email,
+
+        dep_id: dep,
+        prov_id: prov,
+        dist_id: dist,
+
+        address,
+        reference,
+
+        receiptType,
+        ruc,
+        razonSocial,
+        direccionFiscal,
+
+        shippingType,
+        carrier,
+
+        shipping_cost: Number(shippingCost || 0), // ✅ OJO nombres como tu endpoint
+        discount: Number(safeDiscount || 0),
+
+        coupon: appliedCoupon,
+
+        items: items.map((it) => ({
+          product_id: it.product_id,
+          title: it.title,
+          qty: Number(it.qty || 0),
+          unit_price: Number(it.price_now || 0), // ✅ orders/create espera unit_price
+          slug: it.slug,
+          image: it.image,
+          color_slug: it.color_slug ?? null,
+          color_name: it.color_name ?? null,
+          size_label: it.size_label ?? null,
+        })),
+
+        metadata: {
+          dep_name: depLabel,
+          prov_name: provLabel,
+          dist_name: distLabel,
+          shipping_type: shippingType,
+          carrier,
+          receipt_type: receiptType,
+          doc_type: docType,
+          doc_number: docNumber,
+        },
+      };
+
+      // ========= 1️⃣ Crear orden =========
+      const orderRes = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const order = await orderRes.json();
+
+      if (!order?.ok || !order?.external_reference) {
+        alert("Falta external_reference");
+        setPaying(false);
+        return;
+      }
+
+      // ========= 2️⃣ Crear preferencia MP (PASANDO external_reference) =========
+      const mpRes = await fetch("/api/mercadopago/create-preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          external_reference: order.external_reference, // 🔥 CLAVE
+          order_id: order.order_id, // opcional (si tu endpoint lo acepta)
           items: items.map((it) => ({
             product_id: it.product_id,
             title: it.title,
@@ -422,49 +492,25 @@ export default function CheckoutClient() {
           })),
           shipping_cost: Number(shippingCost || 0),
           discount: Number(safeDiscount || 0),
-          payer: { name: fullName, email, phone },
-          metadata: {
-            // ubigeo
-            dep_id: dep,
-            prov_id: prov,
-            dist_id: dist,
-            dep_name: depLabel,
-            prov_name: provLabel,
-            dist_name: distLabel,
-
-            // extra útil
-            address,
-            reference,
-            shipping_type: shippingType,
-            carrier,
-            receipt_type: receiptType,
-            doc_type: docType,
-            doc_number: docNumber,
-            ruc: receiptType === "factura" ? ruc : null,
-            razon_social: receiptType === "factura" ? razonSocial : null,
-            direccion_fiscal: receiptType === "factura" ? direccionFiscal : null,
-
-            // cupón
-            coupon: appliedCoupon,
-            discount: Number(safeDiscount || 0),
-            shipping_cost: Number(shippingCost || 0),
+          payer: {
+            name: payload.fullName,
+            email: payload.email,
+            phone: payload.phone,
           },
         }),
       });
 
-      const data = await res.json();
+      const mp = await mpRes.json();
 
-      if (!res.ok || !data?.ok) {
-        console.error("create-preference failed:", data);
-        alert(data?.message || "No se pudo iniciar el pago. Intenta nuevamente.");
+      if (!mp?.ok) {
+        alert("Error iniciando pago");
         setPaying(false);
         return;
       }
 
-      // ✅ REDIRECT DIRECTO A MERCADOPAGO
-      const url = data.init_point || data.sandbox_init_point;
+      const url = mp.init_point || mp.sandbox_init_point;
       if (!url) {
-        alert("No se recibió init_point de MercadoPago.");
+        alert("No llegó init_point");
         setPaying(false);
         return;
       }
@@ -584,7 +630,6 @@ export default function CheckoutClient() {
                 items.map((it) => {
                   const price = Number(it.price_now ?? 0);
 
-                  // ✅ color robusto: name o slug
                   const color = pretty(
                     (it.color_name ?? it.color_slug ?? "").toString().trim()
                   );
@@ -1076,7 +1121,7 @@ export default function CheckoutClient() {
             className="mt-5 h-12 w-full rounded-full bg-[#2f2f2f] text-[13px] font-semibold text-white transition hover:bg-[#262626] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onContinue}
           >
-            {paying ? "Abriendo MercadoPago..." : "Pagar ahora"}
+            {paying ? "Abriendo MercadoPago..." : "Ir a pagar"}
           </button>
 
           <Link
@@ -1095,14 +1140,11 @@ export default function CheckoutClient() {
       {/* ===== Modal Cupón (BONITO + GIF) ===== */}
       {showCoupon && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => setShowCoupon(false)}
             aria-hidden="true"
           />
-
-          {/* Panel */}
           <div
             role="dialog"
             aria-modal="true"
@@ -1117,11 +1159,9 @@ export default function CheckoutClient() {
               "animate-[modalIn_.18s_ease-out]",
             ].join(" ")}
           >
-            {/* Header */}
             <div className="px-5 pt-5 pb-4 border-b border-black/5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  {/* ✅ GIF icono: coloca cupon-movil.gif en /public */}
                   <div className="relative h-10 w-10 overflow-hidden rounded-2xl bg-black/[0.04] border border-black/10">
                     <Image
                       src="/cupon-movil.gif"
@@ -1132,7 +1172,6 @@ export default function CheckoutClient() {
                       priority
                     />
                   </div>
-
                   <div>
                     <h3 className="text-[15px] font-semibold tracking-tight text-black">
                       Cupón de descuento
@@ -1157,7 +1196,6 @@ export default function CheckoutClient() {
               </div>
             </div>
 
-            {/* Body */}
             <div className="px-5 pt-4 pb-24">
               <div className="rounded-2xl border border-black/10 bg-black/[0.02] p-3">
                 <div className="flex items-center gap-2">
@@ -1197,7 +1235,6 @@ export default function CheckoutClient() {
                   </button>
                 </div>
 
-                {/* Mensaje */}
                 {couponMsg && (
                   <div
                     className={[
@@ -1216,7 +1253,6 @@ export default function CheckoutClient() {
                 </div>
               </div>
 
-              {/* Chip cuando ya hay cupón aplicado */}
               {appliedCoupon ? (
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-black/10 bg-white p-3">
                   <div className="min-w-0">
@@ -1243,7 +1279,6 @@ export default function CheckoutClient() {
               ) : null}
             </div>
 
-            {/* Footer sticky */}
             <div className="absolute left-0 right-0 bottom-0 p-3 bg-white border-t border-black/5">
               <div className="flex gap-2">
                 <button
@@ -1265,7 +1300,6 @@ export default function CheckoutClient() {
               </div>
             </div>
 
-            {/* Animación */}
             <style jsx>{`
               @keyframes modalIn {
                 from {

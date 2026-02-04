@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type BodyItem = {
   product_id: string; // uuid string (public.products.id)
-  variant_id?: string | null; // uuid string (public.product_variants.id) opcional
+  variant_id?: string | null;
 
   title: string;
   slug?: string | null;
@@ -42,15 +42,16 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as {
+      external_reference?: string; // ✅ viene del /api/orders/create
+      order_id?: string;
+
       items: BodyItem[];
 
       shipping_cost: number;
-      discount: number; // total descuento S/ (solo productos)
+      discount: number;
 
-      // si quieres: cupón
       coupon_code?: string | null;
 
-      // estos datos pueden venir desde tu CheckoutClient
       customer?: {
         full_name?: string;
         email?: string;
@@ -76,18 +77,26 @@ export async function POST(req: Request) {
         carrier?: string | null;
       };
 
-      // MP payer (opcional)
       payer?: { name?: string; email?: string; phone?: string };
 
-      // metadata extra (se guarda en orders.metadata también)
       metadata?: any;
     };
 
-    const items = Array.isArray(body.items) ? body.items : [];
-    const shippingCost = round2(Number(body.shipping_cost || 0));
-    const discount = Math.max(0, round2(Number(body.discount || 0)));
+    // ✅ 3️⃣ LO QUE PEDISTE: DESTRUCTURING + VALIDACIÓN AL INICIO
+    const { external_reference, items, shipping_cost, discount, payer } = body;
 
-    if (items.length === 0) {
+    if (!external_reference) {
+      return NextResponse.json(
+        { ok: false, message: "Falta external_reference" },
+        { status: 400 }
+      );
+    }
+
+    const safeItems = Array.isArray(items) ? items : [];
+    const shippingCost = round2(Number(shipping_cost || 0));
+    const disc = Math.max(0, round2(Number(discount || 0)));
+
+    if (safeItems.length === 0) {
       return NextResponse.json(
         { ok: false, message: "Carrito vacío" },
         { status: 400 }
@@ -96,26 +105,26 @@ export async function POST(req: Request) {
 
     // ===== Montos base
     const subtotal = round2(
-      items.reduce(
+      safeItems.reduce(
         (acc, it) => acc + Number(it.unit_price || 0) * Number(it.qty || 0),
         0
       )
     );
 
-    const safeDiscount = subtotal > 0 ? Math.min(discount, subtotal) : 0;
+    const safeDiscount = subtotal > 0 ? Math.min(disc, subtotal) : 0;
     const total = round2(Math.max(0, subtotal - safeDiscount) + shippingCost);
 
     // ===== Aplicar descuento sin items negativos (prorrateo)
     const factor = subtotal > 0 ? (subtotal - safeDiscount) / subtotal : 1;
 
-    const pricedItems = items.map((it) => ({
+    const pricedItems = safeItems.map((it) => ({
       ...it,
       qty: Math.max(1, Number(it.qty || 1)),
       unit_price: round2(Number(it.unit_price || 0)),
     }));
 
     const computed = pricedItems.map((it) => ({
-      id: it.product_id, // MP item id puede ser string
+      id: it.product_id,
       title: it.title,
       quantity: it.qty,
       currency_id: "PEN",
@@ -135,115 +144,30 @@ export async function POST(req: Request) {
       last.unit_price = Math.max(0, round2(last.unit_price + perUnitFix));
     }
 
-    // ===== 1) Crear ORDEN en Supabase (ANTES de MP)
+    // ===== (Opcional) tocar orden si mandas order_id
     const sb = supabaseAdmin();
-
-    const external_reference = `smiggle_${crypto.randomUUID()}`;
-
-    const customer = body.customer || {};
-    const addr = body.address || {};
-    const receipt = body.receipt || {};
-    const ship = body.shipping || {};
-
-    const { data: order, error: orderErr } = await sb
-      .from("orders")
-      .insert({
-        external_reference,
-
-        payment_status: "initiated",
-
-        subtotal,
-        discount: safeDiscount,
-        shipping_cost: shippingCost,
-        total,
-        currency_id: "PEN",
-
-        full_name: customer.full_name || body?.payer?.name || "Cliente",
-        email: customer.email || body?.payer?.email || "no-email@local",
-        phone: customer.phone || body?.payer?.phone || "000000000",
-        doc_type: customer.doc_type || null,
-        doc_number: customer.doc_number || null,
-
-        dep_id: addr.dep_id || null,
-        prov_id: addr.prov_id || null,
-        dist_id: addr.dist_id || null,
-        address: addr.address || null,
-        reference: addr.reference || null,
-
-        receipt_type: receipt.receipt_type || "boleta",
-        ruc: receipt.ruc || null,
-        razon_social: receipt.razon_social || null,
-        direccion_fiscal: receipt.direccion_fiscal || null,
-
-        shipping_type: ship.shipping_type || null,
-        carrier: ship.carrier || null,
-
-        coupon_code: body.coupon_code || null,
-
-        // guardamos TODO lo extra para auditoría
-        metadata: {
-          ...(body.metadata ?? {}),
-          safeDiscount,
-          shippingCost,
-        },
-      })
-      .select("id, external_reference")
-      .single();
-
-    if (orderErr || !order) {
-      console.error("Supabase order insert error:", orderErr);
-      return NextResponse.json(
-        { ok: false, message: "Error creando orden en Supabase" },
-        { status: 500 }
-      );
+    if (body.order_id) {
+      await sb
+        .from("orders")
+        .update({
+          payment_status: "initiated",
+          metadata: {
+            ...(body.metadata ?? {}),
+            discount: safeDiscount,
+            shipping_cost: shippingCost,
+          },
+        })
+        .eq("id", body.order_id);
     }
 
-    // ===== 2) Insertar ITEMS en Supabase (FK + snapshot)
-    const itemsRows = pricedItems.map((it) => {
-      const qty = Math.max(1, Number(it.qty || 1));
-      const unit = round2(Number(it.unit_price || 0));
-
-      return {
-        order_id: order.id,
-
-        // FK a tu schema real
-        product_id: it.product_id,
-        variant_id: it.variant_id ?? null,
-
-        qty,
-        unit_price: unit,
-        line_total: round2(unit * qty),
-
-        // snapshot
-        title: it.title,
-        slug: it.slug ?? null,
-        image: it.image ?? null,
-        color_name: it.color_name ?? null,
-        color_slug: it.color_slug ?? null,
-        size_label: it.size_label ?? null,
-        sku: it.sku ?? null,
-      };
-    });
-
-    const { error: itemsErr } = await sb.from("order_items").insert(itemsRows);
-    if (itemsErr) {
-      console.error("Supabase order_items insert error:", itemsErr);
-      return NextResponse.json(
-        { ok: false, message: "Error guardando items de la orden en Supabase" },
-        { status: 500 }
-      );
-    }
-
-    // ===== 3) Crear preference Mercado Pago
+    // ✅ 3️⃣ LO QUE PEDISTE: preferencePayload usa EL MISMO external_reference
     const preferencePayload: any = {
-      external_reference,
+      external_reference, // 🔥 MISMO DE LA ORDEN
 
-      // ✅ Recomendación clave: webhook directo en la preferencia
       notification_url: `${siteUrl}/api/mercadopago/webhook`,
 
       items: computed,
 
-      // (opcional) no siempre funciona como esperas en todos los flows, pero lo dejamos:
       shipments: {
         cost: Math.max(0, shippingCost),
         mode: "not_specified",
@@ -263,17 +187,16 @@ export async function POST(req: Request) {
       auto_return: "approved",
 
       payer: {
-        name: body?.payer?.name || customer.full_name || undefined,
-        email: body?.payer?.email || customer.email || undefined,
-        phone: (body?.payer?.phone || customer.phone)
-          ? { number: body?.payer?.phone || customer.phone }
+        name: payer?.name || body?.customer?.full_name || undefined,
+        email: payer?.email || body?.customer?.email || undefined,
+        phone: (payer?.phone || body?.customer?.phone)
+          ? { number: payer?.phone || body?.customer?.phone }
           : undefined,
       },
 
       metadata: {
         ...body.metadata,
-        order_id: order.id,
-        external_reference,
+        order_id: body.order_id,
         discount: safeDiscount,
         shipping_cost: shippingCost,
       },
@@ -296,15 +219,16 @@ export async function POST(req: Request) {
     if (!mpRes.ok) {
       console.error("MP error:", mpData);
 
-      // marcamos la orden como error (opcional)
-      await sb
-        .from("orders")
-        .update({
-          payment_status: "failed",
-          payment_status_detail: "preference_create_failed",
-          metadata: { ...(body.metadata ?? {}), mp_error: mpData },
-        })
-        .eq("id", order.id);
+      if (body.order_id) {
+        await sb
+          .from("orders")
+          .update({
+            payment_status: "failed",
+            payment_status_detail: "preference_create_failed",
+            metadata: { ...(body.metadata ?? {}), mp_error: mpData },
+          })
+          .eq("id", body.order_id);
+      }
 
       return NextResponse.json(
         {
@@ -316,21 +240,20 @@ export async function POST(req: Request) {
       );
     }
 
-    // ===== 4) Guardar preference_id en Supabase
-    await sb
-      .from("orders")
-      .update({
-        mp_preference_id: mpData.id,
-      })
-      .eq("id", order.id);
+    if (body.order_id) {
+      await sb
+        .from("orders")
+        .update({ mp_preference_id: mpData.id })
+        .eq("id", body.order_id);
+    }
 
     return NextResponse.json({
       ok: true,
-      order_id: order.id,
+      order_id: body.order_id ?? null,
       external_reference,
       preference_id: mpData.id,
-      init_point: mpData.init_point, // PROD
-      sandbox_init_point: mpData.sandbox_init_point, // sandbox
+      init_point: mpData.init_point,
+      sandbox_init_point: mpData.sandbox_init_point,
       total,
     });
   } catch (err: any) {
