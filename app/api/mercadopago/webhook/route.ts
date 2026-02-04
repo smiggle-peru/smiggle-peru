@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // ✅ EMAIL
 import { sendOrderEmail } from "@/lib/email/mailer";
-import { orderEmailTemplate } from "@/lib/email/templates";
+import { buildOrderEmailHtml } from "@/lib/email/templates";
 
 type MPWebhookBody = {
   action?: string;

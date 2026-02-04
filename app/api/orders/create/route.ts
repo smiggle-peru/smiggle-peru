@@ -8,7 +8,8 @@ import {
 
 // ✅ EMAIL
 import { sendOrderEmail } from "@/lib/email/mailer";
-import { orderEmailTemplate } from "@/lib/email/templates";
+import { buildOrderEmailHtml } from "@/lib/email/templates";
+
 
 type CartItem = {
   product_id: string;
