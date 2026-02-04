@@ -104,6 +104,12 @@ export async function POST(req: Request) {
       );
     }
 
+    // ✅ siteUrl para emails + imágenes absolutas (fallback seguro)
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://www.smiggle-peru.com";
+
     // ✅ Genera SIEMPRE external_reference
     const external_reference = `smiggle_${Date.now()}_${Math.random()
       .toString(16)
@@ -130,6 +136,14 @@ export async function POST(req: Request) {
     const dep_name = findDepName(body.dep_id);
     const prov_name = findProvName(body.dep_id, body.prov_id);
     const dist_name = findDistName(body.prov_id, body.dist_id);
+
+    // helper: imagen absoluta para Gmail
+    const absImg = (img?: string | null) => {
+      const raw = (img || "").trim();
+      if (!raw) return null;
+      if (raw.startsWith("http")) return raw;
+      return `${siteUrl}${raw.startsWith("/") ? "" : "/"}${raw}`;
+    };
 
     // Insert order
     const payload = {
@@ -179,14 +193,16 @@ export async function POST(req: Request) {
       created_at_pe: nowPeruISO(), // si tienes esta columna. Si no, bórrala.
       paid_at: null,
 
-      // store items snapshot
+      // ✅ store items snapshot (con imagen absoluta para email)
       items: items.map((it) => ({
         product_id: it.product_id,
         title: it.title,
         qty: Number(it.qty || 0),
         unit_price: moneyRound(Number(it.unit_price || 0)),
         slug: it.slug ?? null,
-        image: it.image ?? null,
+
+        image: absImg(it.image),
+
         color_name: it.color_name ?? null,
         color_slug: it.color_slug ?? null,
         size_label: it.size_label ?? null,
@@ -199,7 +215,6 @@ export async function POST(req: Request) {
     const { data, error } = await sb
       .from("orders")
       .insert(payload)
-      // 👇 importante: también traer email_pending_sent_at para evitar reenvíos
       .select("id, external_reference, email_pending_sent_at")
       .single();
 
@@ -212,9 +227,6 @@ export async function POST(req: Request) {
     }
 
     // ✅ EMAIL PENDIENTE (después del insert OK) - NUEVO TEMPLATE PRO
-    const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
-
     try {
       if (payload.email && siteUrl && !data.email_pending_sent_at) {
         const html = buildOrderEmailHtml({
@@ -238,7 +250,7 @@ export async function POST(req: Request) {
             doc_type: payload.doc_type,
             doc_number: payload.doc_number,
           },
-          mode: "pending", // pedido recién creado => pendiente
+          mode: "pending",
           siteUrl,
         });
 
@@ -254,7 +266,6 @@ export async function POST(req: Request) {
           .eq("id", data.id);
       }
     } catch (e) {
-      // ⚠️ No rompas la creación de la orden por error de email
       console.error("orders/create email pending error:", e);
     }
 
