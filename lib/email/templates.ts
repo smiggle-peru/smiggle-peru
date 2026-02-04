@@ -1,36 +1,57 @@
 type EmailMode = "success" | "pending" | "failure";
 
-type OrderItem = {
-  title: string;
-  qty: number;
-  unit_price: number;
+/* =========================
+   TYPES (FIX PRO)
+========================= */
+export type OrderItem = {
+  product_id?: string;
+  title?: string;
+  qty?: number;
+  unit_price?: number;
   image?: string | null;
   slug?: string | null;
   color_name?: string | null;
+  color_slug?: string | null;
   size_label?: string | null;
 };
 
-type Order = {
-  external_reference: string;
+export type Order = {
+  id?: string;
+  external_reference?: string;
+
+  // cliente
   full_name?: string | null;
   email?: string | null;
   phone?: string | null;
 
+  // documento
+  doc_type?: string | null;
+  doc_number?: string | null;
+
+  // dirección
   dep_name?: string | null;
   prov_name?: string | null;
   dist_name?: string | null;
   address?: string | null;
   reference?: string | null;
 
+  // envío
   shipping_type?: string | null;
   carrier?: string | null;
+  shipping_cost?: number | null;
 
+  // montos
   subtotal?: number | null;
   discount?: number | null;
-  shipping_cost?: number | null;
   total?: number | null;
+  currency_id?: string | null;
 
+  // items snapshot
   items?: OrderItem[] | null;
+
+  // fechas
+  created_at?: string | null;
+  paid_at?: string | null;
 };
 
 function money(n: any) {
@@ -92,10 +113,16 @@ export function buildOrderEmailHtml({
               <div style="display:flex;gap:14px;align-items:center;padding:14px;border:1px solid #eee;border-radius:14px;margin-bottom:12px;">
                 ${img}
                 <div style="flex:1;">
-                  <div style="font-weight:700;color:#111;line-height:1.2;">${it.title}</div>
-                  <div style="color:#666;font-size:13px;margin-top:4px;">${variants || ""}</div>
+                  <div style="font-weight:700;color:#111;line-height:1.2;">${
+                    it.title ?? ""
+                  }</div>
+                  <div style="color:#666;font-size:13px;margin-top:4px;">${
+                    variants || ""
+                  }</div>
                   <div style="color:#111;font-size:13px;margin-top:6px;">
-                    Cant: <b>${it.qty}</b> · Precio: <b>${money(it.unit_price)}</b>
+                    Cant: <b>${Number(it.qty || 0)}</b> · Precio: <b>${money(
+              it.unit_price
+            )}</b>
                   </div>
                 </div>
               </div>
@@ -107,15 +134,17 @@ export function buildOrderEmailHtml({
     .filter(Boolean)
     .join(" / ");
 
+  const externalRef = order.external_reference || "";
+
   const trackUrl = `${siteUrl}/checkout/${mode}?external_reference=${encodeURIComponent(
-    order.external_reference
+    externalRef
   )}`;
 
   const primaryBtn =
     mode === "failure"
       ? `${siteUrl}/checkout`
       : `${siteUrl}/checkout/pending?external_reference=${encodeURIComponent(
-          order.external_reference
+          externalRef
         )}`;
 
   const primaryText = mode === "failure" ? "Intentar de nuevo" : "Ver mi pedido";
@@ -140,7 +169,7 @@ export function buildOrderEmailHtml({
             <div style="margin-top:14px;font-size:22px;font-weight:900;color:#111;">${s.title}</div>
             <div style="margin-top:8px;color:#555;line-height:1.5;">${s.desc}</div>
             <div style="margin-top:10px;color:#777;font-size:12px;">
-              Referencia: <b style="color:#111;">${order.external_reference}</b>
+              Referencia: <b style="color:#111;">${externalRef}</b>
             </div>
           </div>
 
@@ -155,13 +184,19 @@ export function buildOrderEmailHtml({
                 <div style="font-weight:900;color:#111;margin-bottom:10px;">Resumen</div>
                 <div style="border:1px solid #eee;border-radius:14px;padding:14px;">
                   <div style="display:flex;justify-content:space-between;color:#444;font-size:13px;margin-bottom:8px;">
-                    <span>Subtotal</span><b style="color:#111;">${money(order.subtotal)}</b>
+                    <span>Subtotal</span><b style="color:#111;">${money(
+                      order.subtotal
+                    )}</b>
                   </div>
                   <div style="display:flex;justify-content:space-between;color:#444;font-size:13px;margin-bottom:8px;">
-                    <span>Descuento</span><b style="color:#111;">-${money(order.discount)}</b>
+                    <span>Descuento</span><b style="color:#111;">-${money(
+                      order.discount
+                    )}</b>
                   </div>
                   <div style="display:flex;justify-content:space-between;color:#444;font-size:13px;margin-bottom:10px;">
-                    <span>Envío</span><b style="color:#111;">${money(order.shipping_cost)}</b>
+                    <span>Envío</span><b style="color:#111;">${money(
+                      order.shipping_cost
+                    )}</b>
                   </div>
                   <div style="height:1px;background:#eee;margin:10px 0;"></div>
                   <div style="display:flex;justify-content:space-between;color:#111;font-size:14px;">
