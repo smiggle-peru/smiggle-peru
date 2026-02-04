@@ -9,9 +9,9 @@ type Category = {
 
 const CATEGORIES: Category[] = [
   { label: "MOCHILAS", href: "/categoria/mochilas" },
-  { label: "PACKS", href: "/categoria/packs" },
+  { label: "PACKS", href: "/categoria/mochilas/packs" },
   { label: "LONCHERAS", href: "/categoria/loncheras" },
-  { label: "PRE ESCOLAR", href: "/categoria/pre-escolar" },
+  { label: "PRE ESCOLAR", href: "/categoria/mochilas/mochilas-preescolares" },
 ];
 
 type Props = {
