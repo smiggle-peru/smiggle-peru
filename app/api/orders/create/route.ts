@@ -6,10 +6,9 @@ import {
   getDistrictsByProvince,
 } from "@/lib/ubigeo";
 
-// ✅ EMAIL
+// ✅ EMAIL (nuevo)
 import { sendOrderEmail } from "@/lib/email/mailer";
 import { buildOrderEmailHtml } from "@/lib/email/templates";
-
 
 type CartItem = {
   product_id: string;
@@ -195,10 +194,6 @@ export async function POST(req: Request) {
 
       coupon: body.coupon ?? null,
       metadata: body.metadata ?? {},
-
-      // ✅ opcional: si ya tienes estos campos en DB, déjalos; si no, quítalos
-      // email_pending_sent_at: null,
-      // email_paid_sent_at: null,
     };
 
     const { data, error } = await sb
@@ -216,29 +211,41 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ EMAIL PENDIENTE (después del insert OK)
+    // ✅ EMAIL PENDIENTE (después del insert OK) - NUEVO TEMPLATE PRO
     const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "https://www.smiggle-peru.com";
+      process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
 
     try {
-      if (payload.email && !data.email_pending_sent_at) {
+      if (payload.email && siteUrl && !data.email_pending_sent_at) {
+        const html = buildOrderEmailHtml({
+          order: {
+            ...data,
+            email: payload.email,
+            full_name: payload.full_name,
+            phone: payload.phone,
+            address: payload.address,
+            reference: payload.reference,
+            dep_name: payload.dep_name,
+            prov_name: payload.prov_name,
+            dist_name: payload.dist_name,
+            carrier: payload.carrier,
+            shipping_type: payload.shipping_type,
+            shipping_cost: payload.shipping_cost,
+            subtotal: payload.subtotal,
+            discount: payload.discount,
+            total: payload.total,
+            items: payload.items,
+            doc_type: payload.doc_type,
+            doc_number: payload.doc_number,
+          },
+          mode: "pending", // pedido recién creado => pendiente
+          siteUrl,
+        });
+
         await sendOrderEmail({
           to: payload.email,
-          subject: "Recibimos tu pedido — Smiggle Perú",
-          html: orderEmailTemplate({
-            title: "Pedido recibido",
-            badge: "PENDIENTE",
-            external_reference: data.external_reference,
-            customerName: payload.full_name || "cliente",
-            items: Array.isArray(payload.items) ? payload.items : [],
-            subtotal: payload.subtotal || 0,
-            shipping: payload.shipping_cost || 0,
-            discount: payload.discount || 0,
-            total: payload.total || 0,
-            statusLine:
-              "estamos procesando tu pago. Te avisaremos apenas se confirme.",
-            ctaUrl: `${siteUrl}/checkout/pending?external_reference=${data.external_reference}`,
-          }),
+          subject: "⏳ Recibimos tu pedido — Smiggle Perú",
+          html,
         });
 
         await sb
