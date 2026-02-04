@@ -390,44 +390,74 @@ export default function CheckoutClient() {
 
   const canContinue = mounted && faltantes.length === 0;
 
-  // ✅ AHORA: ir directo a Mercado Pago
+  // ✅ REEMPLAZADO: ir directo a MercadoPago (PEGAR TAL CUAL)
   const onContinue = async () => {
     setSubmitted(true);
     if (!canContinue) return;
 
-    try {
-      setPaying(true);
+    if (paying) return;
+    setPaying(true);
 
+    try {
       const payload = {
         items: items.map((it) => ({
-          key: it.key,
-          product_id: it.product_id,
+          product_id: it.product_id, // uuid
+          variant_id: (it as any).variant_id ?? null, // si no tienes, queda null
+
           title: it.title,
-          qty: Number(it.qty || 1),
-          price_now: Number(it.price_now || 0),
+          slug: it.slug,
+          image: it.image,
+
+          qty: Number(it.qty || 0),
+          unit_price: Number(it.price_now || 0),
+
+          color_name: it.color_name ?? null,
+          color_slug: it.color_slug ?? null,
+          size_label: it.size_label ?? null,
+
+          sku: (it as any).sku ?? null,
         })),
-        discount: Number(safeDiscount || 0), // descuento SOLO productos
-        shippingCost: Number(shippingCost || 0),
+
+        shipping_cost: Number(shippingCost || 0),
+        discount: Number(safeDiscount || 0),
+        coupon_code: appliedCoupon ?? null,
 
         customer: {
-          fullName,
+          full_name: fullName,
           email,
           phone,
-          docType,
-          docNumber,
+          doc_type: docType,
+          doc_number: docNumber,
         },
+
         address: {
-          dep,
-          prov,
-          dist,
+          dep_id: dep,
+          prov_id: prov,
+          dist_id: dist,
           address,
           reference,
         },
+
         receipt: {
-          receiptType,
-          ruc,
-          razonSocial,
-          direccionFiscal,
+          receipt_type: receiptType,
+          ruc: receiptType === "factura" ? ruc : null,
+          razon_social: receiptType === "factura" ? razonSocial : null,
+          direccion_fiscal: receiptType === "factura" ? direccionFiscal : null,
+        },
+
+        shipping: {
+          shipping_type: shippingType,
+          carrier,
+        },
+
+        payer: {
+          name: fullName,
+          email,
+          phone,
+        },
+
+        metadata: {
+          source: "checkout",
         },
       };
 
@@ -439,18 +469,25 @@ export default function CheckoutClient() {
 
       const data = await res.json();
 
-      if (!data?.ok || !data?.init_point) {
-        console.error("MP create preference failed:", data);
-        alert(data?.message || "No se pudo iniciar el pago. Intenta otra vez.");
+      if (!res.ok || !data?.ok) {
+        console.error("create-preference failed:", data);
+        alert(data?.message || "No se pudo iniciar el pago. Intenta nuevamente.");
         setPaying(false);
         return;
       }
 
-      // ✅ Redirige a Mercado Pago
-      window.location.href = data.init_point;
-    } catch (e) {
-      console.error(e);
-      alert("Error iniciando pago con Mercado Pago.");
+      // ✅ REDIRECT DIRECTO A MERCADOPAGO
+      const url = data.init_point || data.sandbox_init_point;
+      if (!url) {
+        alert("No se recibió init_point de MercadoPago.");
+        setPaying(false);
+        return;
+      }
+
+      window.location.href = url;
+    } catch (err) {
+      console.error(err);
+      alert("Error iniciando pago. Intenta nuevamente.");
       setPaying(false);
     }
   };
@@ -1020,7 +1057,9 @@ export default function CheckoutClient() {
             {safeDiscount > 0 ? (
               <Row
                 label="Descuento"
-                value={<span className="text-green-700">- {money(safeDiscount)}</span>}
+                value={
+                  <span className="text-green-700">- {money(safeDiscount)}</span>
+                }
               />
             ) : null}
 
@@ -1046,12 +1085,13 @@ export default function CheckoutClient() {
             <Row label="Total" value={money(mounted ? total : 0)} strong />
           </div>
 
+          {/* ✅ BOTÓN CAMBIADO (PEGAR) */}
           <button
             disabled={!canContinue || paying}
             className="mt-5 h-12 w-full rounded-full bg-[#2f2f2f] text-[13px] font-semibold text-white transition hover:bg-[#262626] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onContinue}
           >
-            {paying ? "Redirigiendo a Mercado Pago..." : "Pagar con Mercado Pago"}
+            {paying ? "Abriendo MercadoPago..." : "Ir a pagar"}
           </button>
 
           <Link
@@ -1125,7 +1165,9 @@ export default function CheckoutClient() {
                   aria-label="Cerrar"
                   title="Cerrar"
                 >
-                  <span className="text-[18px] leading-none text-black/70">×</span>
+                  <span className="text-[18px] leading-none text-black/70">
+                    ×
+                  </span>
                 </button>
               </div>
             </div>
@@ -1193,10 +1235,15 @@ export default function CheckoutClient() {
               {appliedCoupon ? (
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-black/10 bg-white p-3">
                   <div className="min-w-0">
-                    <div className="text-[12px] text-black/55">Cupón aplicado</div>
+                    <div className="text-[12px] text-black/55">
+                      Cupón aplicado
+                    </div>
                     <div className="truncate text-[13px] font-semibold text-black">
-                      {appliedCoupon} <span className="text-black/40">·</span>{" "}
-                      <span className="text-green-700">-{money(safeDiscount)}</span>
+                      {appliedCoupon}{" "}
+                      <span className="text-black/40">·</span>{" "}
+                      <span className="text-green-700">
+                        -{money(safeDiscount)}
+                      </span>
                     </div>
                   </div>
 
