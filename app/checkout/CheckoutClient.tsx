@@ -1091,7 +1091,7 @@ export default function CheckoutClient() {
             className="mt-5 h-12 w-full rounded-full bg-[#2f2f2f] text-[13px] font-semibold text-white transition hover:bg-[#262626] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onContinue}
           >
-            {paying ? "Abriendo MercadoPago..." : "Ir a pagar"}
+            {paying ? "Abriendo MercadoPago..." : "Pagar ahora"}
           </button>
 
           <Link
