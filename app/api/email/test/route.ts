@@ -17,26 +17,19 @@ function subjectFor(mode: EmailMode) {
 }
 
 /**
- * TEST EMAIL
- * /api/email/test?to=correo@...&mode=pending&external_reference=smiggle_...
+ * TEST EMAIL (nivel empresa)
+ * /api/email/test?to=correo@dominio.com
+ * /api/email/test?to=correo@dominio.com&mode=success
+ * /api/email/test?to=correo@dominio.com&external_reference=smiggle_xxx
  */
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    const to = url.searchParams.get("to") || "";
+    // 🔹 OPCIÓN B — to por query param
+    const to = url.searchParams.get("to");
     const mode = pickMode(url.searchParams.get("mode"));
     const external_reference = url.searchParams.get("external_reference");
-
-    const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
-
-    if (!siteUrl) {
-      return NextResponse.json(
-        { ok: false, message: "Falta NEXT_PUBLIC_SITE_URL o NEXT_PUBLIC_APP_URL" },
-        { status: 500 }
-      );
-    }
 
     if (!to) {
       return NextResponse.json(
@@ -45,35 +38,51 @@ export async function GET(req: Request) {
       );
     }
 
-    // 1) Trae una orden real si mandas external_reference
-    let order: any = null;
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL;
+
+    if (!siteUrl) {
+      return NextResponse.json(
+        { ok: false, message: "Falta NEXT_PUBLIC_SITE_URL o NEXT_PUBLIC_APP_URL" },
+        { status: 500 }
+      );
+    }
+
+    // 1️⃣ Orden real desde Supabase
+    let order: any;
 
     if (external_reference) {
       const sb = supabaseAdmin();
+
       const { data, error } = await sb
         .from("orders")
         .select("*")
         .eq("external_reference", external_reference)
         .single();
 
-      if (error) {
+      if (error || !data) {
         return NextResponse.json(
-          { ok: false, message: "No se encontró la orden por external_reference", error },
+          {
+            ok: false,
+            message: "No se encontró la orden por external_reference",
+            error,
+          },
           { status: 404 }
         );
       }
 
       order = data;
     } else {
-      // 2) Si no mandas external_reference, arma un ejemplo (mock)
+      // 2️⃣ Mock de empresa (email de prueba)
       order = {
         external_reference: `smiggle_test_${Date.now()}`,
-        full_name: "Luis Pruebas",
+        full_name: "Luis Johnatan",
         email: to,
         phone: "900000000",
-        dep_name: "Cajamarca",
-        prov_name: "Cajamarca",
-        dist_name: "Cajamarca",
+        dep_name: "Lima",
+        prov_name: "Lima",
+        dist_name: "Miraflores",
         address: "Av. Prueba 123",
         reference: "Frente a la plaza",
         shipping_type: "provincia_regular",
@@ -84,23 +93,23 @@ export async function GET(req: Request) {
         total: 239,
         items: [
           {
-            title: "Pack Escolar Smiggle (Demo)",
+            title: "Pack Escolar Smiggle 3 Piezas",
             qty: 1,
             unit_price: 223,
-            image: `${siteUrl}/brand/smiggle-logo.jpg`,
-            color_name: "Negro",
-            size_label: null,
+            image: `${siteUrl}/images/test-product.jpg`,
           },
         ],
       };
     }
 
+    // 3️⃣ Construye HTML
     const html = buildOrderEmailHtml({
       order,
       mode,
       siteUrl,
     });
 
+    // 4️⃣ Envía email
     await sendOrderEmail({
       to,
       subject: subjectFor(mode),
@@ -116,7 +125,7 @@ export async function GET(req: Request) {
         order.external_reference
       )}`,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("email/test error:", err);
     return NextResponse.json(
       { ok: false, message: "Error enviando email de prueba" },
