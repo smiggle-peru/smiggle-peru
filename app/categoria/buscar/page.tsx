@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import SearchResults from "./SearchResults";
+import { Suspense } from "react";
+
+export const dynamic = "force-dynamic";
 
 export default async function BuscarPage() {
   const supabase = createClient(
@@ -63,7 +66,6 @@ export default async function BuscarPage() {
         id: p.id,
         title: p.title,
         slug: p.slug,
-        // dejamos details por si lo quieres usar para keys de Fuse
         details: p.details,
         card: {
           image,
@@ -80,7 +82,15 @@ export default async function BuscarPage() {
         Resultados de búsqueda
       </h1>
 
-      <SearchResults items={items} />
+      <Suspense
+        fallback={
+          <div className="py-16 text-center text-sm text-black/60">
+            Cargando resultados…
+          </div>
+        }
+      >
+        <SearchResults items={items} />
+      </Suspense>
     </main>
   );
 }
