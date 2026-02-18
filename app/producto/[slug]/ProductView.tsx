@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/lib/store/cart";
 import { ProductDetailsPanels } from "@/components/ProductDetailsPanels";
+import ProductLightbox from "@/components/ProductLightbox";
 
 type Variant = {
   id: string;
@@ -68,8 +69,12 @@ export function ProductView({
   const gallery = selected?.images?.filter(Boolean) ?? [];
   const [activeIdx, setActiveIdx] = useState(0);
 
+  // ✅ Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
   useEffect(() => {
     setActiveIdx(0);
+    // cuando cambias de variante, aseguras que el zoom abra desde la primera
   }, [selected?.id]);
 
   const activeImg = gallery[activeIdx] ?? gallery[0] ?? null;
@@ -91,6 +96,12 @@ export function ProductView({
   const includes: string[] = Array.isArray(product?.details?.includes)
     ? product.details.includes
     : [];
+
+  // ✅ Slides para el lightbox
+  const lightboxSlides = useMemo(
+    () => gallery.map((src) => ({ src, alt: product.title })),
+    [gallery, product.title]
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 py-8">
@@ -124,14 +135,25 @@ export function ProductView({
             <div className="relative overflow-hidden rounded-lg border border-black/10 bg-[#f3f3f3]">
               <div className="relative aspect-square w-full">
                 {activeImg ? (
-                  <Image
-                    src={activeImg}
-                    alt={product.title}
-                    fill
-                    sizes="(max-width: 1024px) 100vw, 560px"
-                    className="object-contain p-4"
-                    priority
-                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setLightboxOpen(true);
+                    }}
+                    className="absolute inset-0 cursor-zoom-in"
+                    aria-label="Abrir zoom"
+                  >
+                    <Image
+                      src={activeImg}
+                      alt={product.title}
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 560px"
+                      className="object-contain p-4"
+                      priority
+                    />
+                  </button>
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-black/50">
                     Sin imagen
@@ -161,6 +183,15 @@ export function ProductView({
                   ))}
                 </div>
               ) : null}
+
+              {/* ✅ LIGHTBOX (fullscreen Smiggle style) */}
+              <ProductLightbox
+                open={lightboxOpen}
+                onClose={() => setLightboxOpen(false)}
+                images={lightboxSlides}
+                index={activeIdx}
+                onIndexChange={setActiveIdx}
+              />
             </div>
           </div>
         </div>
@@ -326,17 +357,35 @@ export function ProductView({
 
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-black/60">
               <span className="inline-flex items-center gap-2">
-                <Image src="/icons/peru.gif" alt="Perú" width={22} height={22} unoptimized />
+                <Image
+                  src="/icons/peru.gif"
+                  alt="Perú"
+                  width={22}
+                  height={22}
+                  unoptimized
+                />
                 Envíos a todo el Perú
               </span>
 
               <span className="inline-flex items-center gap-2">
-                <Image src="/icons/security.gif" alt="Pago seguro" width={22} height={22} unoptimized />
+                <Image
+                  src="/icons/security.gif"
+                  alt="Pago seguro"
+                  width={22}
+                  height={22}
+                  unoptimized
+                />
                 Pago seguro
               </span>
 
               <span className="inline-flex items-center gap-2">
-                <Image src="/icons/soporte.gif" alt="Soporte" width={22} height={22} unoptimized />
+                <Image
+                  src="/icons/soporte.gif"
+                  alt="Soporte"
+                  width={22}
+                  height={22}
+                  unoptimized
+                />
                 Soporte a todo el Perú
               </span>
             </div>
