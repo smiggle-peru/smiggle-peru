@@ -31,8 +31,9 @@ export default function ProductLightbox({
       plugins={[Thumbnails, Zoom]}
       on={{ view: ({ index }) => onIndexChange(index) }}
       styles={{
-        container: { backgroundColor: "#fff" },
+        container: { backgroundColor: "#fff" }, // fondo blanco
         button: { filter: "none" },
+        icon: { color: "#000" }, // iconos negros
       }}
       thumbnails={{
         position: "bottom",

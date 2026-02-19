@@ -66,13 +66,12 @@ export function ProductCard({
         <Link href={href} className="block">
           <div className="relative aspect-square w-full">
             {image ? (
-              <Image
+              <img
                 src={image}
                 alt={title}
-                fill
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                className="object-contain"
-                priority={false}
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 h-full w-full object-contain"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-black/40">

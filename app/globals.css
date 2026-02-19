@@ -101,3 +101,18 @@ body {
   filter: brightness(0) saturate(100%) invert(18%) sepia(92%) saturate(6164%)
     hue-rotate(355deg) brightness(95%) contrast(110%);
 }
+
+/* Lightbox (yet-another-react-lightbox): fondo blanco + iconos negros */
+.yarl__container {
+  background: #fff !important;
+}
+
+.yarl__button,
+.yarl__icon {
+  color: #000 !important;
+  filter: none !important;
+}
+
+.yarl__button:hover {
+  opacity: 0.85;
+}
