@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { supabaseServer } from "@/lib/supabase/server";
+import GoogleAdsPurchase from "@/components/GoogleAdsPurchase";
 
 function money(n: any) {
   const v = Number(n || 0);
@@ -30,9 +31,12 @@ function shipLabel(s: any) {
 
 function payLabel(s: any) {
   const v = String(s || "").toLowerCase();
-  if (v === "approved") return { t: "Pago aprobado", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" };
-  if (v === "pending" || v === "in_process") return { t: "Pago en proceso", cls: "bg-amber-50 text-amber-700 ring-amber-200" };
-  if (v === "rejected" || v === "cancelled") return { t: "Pago rechazado", cls: "bg-rose-50 text-rose-700 ring-rose-200" };
+  if (v === "approved")
+    return { t: "Pago aprobado", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" };
+  if (v === "pending" || v === "in_process")
+    return { t: "Pago en proceso", cls: "bg-amber-50 text-amber-700 ring-amber-200" };
+  if (v === "rejected" || v === "cancelled")
+    return { t: "Pago rechazado", cls: "bg-rose-50 text-rose-700 ring-rose-200" };
   return { t: "Estado desconocido", cls: "bg-slate-50 text-slate-700 ring-slate-200" };
 }
 
@@ -106,8 +110,15 @@ export default async function SuccessPage({
   const items = Array.isArray(order.items) ? order.items : [];
   const badge = payLabel(order.payment_status);
 
+  // ✅ Solo disparar conversión si el pago está aprobado
+  const isApproved = String(order.payment_status || "").toLowerCase() === "approved";
+  const txId = String(order.external_reference || external_reference);
+  const totalValue = Number(order.total || 0);
+
   return (
     <div className="min-h-[70vh] bg-[#F6F7F9]">
+      {isApproved ? <GoogleAdsPurchase transactionId={txId} value={totalValue} /> : null}
+
       <div className="mx-auto max-w-6xl px-5 py-10 md:py-14">
         {/* HERO */}
         <div className="rounded-3xl bg-gradient-to-r from-black to-[#111827] p-7 text-white shadow-[0_20px_60px_rgba(0,0,0,0.25)] md:p-10">
@@ -125,7 +136,9 @@ export default async function SuccessPage({
             </div>
 
             <div className="flex flex-col items-start gap-2 md:items-end">
-              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold ring-1 ${badge.cls}`}>
+              <span
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-semibold ring-1 ${badge.cls}`}
+              >
                 <span className="h-2 w-2 rounded-full bg-current opacity-70" />
                 {badge.t}
               </span>
@@ -155,12 +168,7 @@ export default async function SuccessPage({
                     >
                       <div className="relative h-20 w-20 overflow-hidden rounded-2xl bg-black/5">
                         {img ? (
-                          <Image
-                            src={img}
-                            alt={it.title || "Producto"}
-                            fill
-                            className="object-cover"
-                          />
+                          <Image src={img} alt={it.title || "Producto"} fill className="object-cover" />
                         ) : null}
                       </div>
 
@@ -215,9 +223,7 @@ export default async function SuccessPage({
                 <div className="rounded-2xl border border-black/10 p-4">
                   <div className="text-xs font-semibold text-black/60">Dirección</div>
                   <div className="mt-1 text-sm font-semibold">{order.address || "—"}</div>
-                  {order.reference ? (
-                    <div className="mt-2 text-xs text-black/60">Referencia: {order.reference}</div>
-                  ) : null}
+                  {order.reference ? <div className="mt-2 text-xs text-black/60">Referencia: {order.reference}</div> : null}
                   <div className="mt-3 text-xs font-semibold text-black/60">Ubicación</div>
                   <div className="mt-1 text-sm">
                     {order.dep_name || "—"}, {order.prov_name || "—"}, {order.dist_name || "—"}
