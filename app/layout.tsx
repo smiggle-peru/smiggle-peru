@@ -14,7 +14,7 @@ const roboto = Roboto({
 /* 🔒 FUERZA LIGHT MODE A NIVEL NAVEGADOR */
 export const viewport: Viewport = {
   themeColor: "#F6F7F9", // color base de tu UI
-  colorScheme: "light",  // ✅ CLAVE
+  colorScheme: "light", // ✅ CLAVE
 };
 
 export const metadata: Metadata = {
@@ -22,6 +22,8 @@ export const metadata: Metadata = {
   description:
     "Smiggle, los creadores de la papelería más divertida. Encuentra mochilas, loncheras, cartucheras y accesorios para el colegio. Compra online.",
 };
+
+const GOOGLE_ADS_ID = "AW-17965047652";
 
 export default function RootLayout({
   children,
@@ -33,6 +35,19 @@ export default function RootLayout({
       <head>
         {/* 🔒 Refuerzo explícito (por si algún navegador se pone creativo) */}
         <meta name="color-scheme" content="light" />
+
+        {/* ✅ Google tag (gtag.js) - Google Ads */}
+        <script async src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${GOOGLE_ADS_ID}');
+            `,
+          }}
+        />
       </head>
 
       {/* ✅ Fondo global SIEMPRE blanco */}
