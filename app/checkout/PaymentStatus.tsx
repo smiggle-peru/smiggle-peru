@@ -74,33 +74,37 @@ function badge(status: string) {
 
   if (s === "approved") {
     return {
-      title: "✅ Pago aprobado",
-      desc: "Tu compra fue confirmada. Te contactaremos para el envío.",
+      title: "✅ Pedido registrado",
+      desc: "Tu solicitud fue registrada. Te contactaremos para confirmar y coordinar el envío.",
       cls: "border-green-200 bg-green-50 text-green-800",
     };
   }
   if (s === "pending" || s === "in_process" || s === "authorized") {
     return {
-      title: "⏳ Pago pendiente",
-      desc: "El pago aún se está procesando. Actualiza en unos segundos.",
+      title: "⏳ Pedido en revisión",
+      desc: "Tu pedido está registrado y se está revisando. Si ya enviaste tus datos, espera la confirmación.",
       cls: "border-yellow-200 bg-yellow-50 text-yellow-900",
     };
   }
   if (s === "rejected" || s === "cancelled") {
     return {
-      title: "❌ Pago rechazado",
-      desc: "No se pudo completar el pago. Puedes intentarlo nuevamente.",
+      title: "❌ Pedido no confirmado",
+      desc: "No se pudo confirmar. Si crees que es un error, contáctanos por WhatsApp para ayudarte.",
       cls: "border-red-200 bg-red-50 text-red-800",
     };
   }
   return {
-    title: "ℹ️ Estado de pago",
-    desc: "Estamos verificando tu pago.",
+    title: "ℹ️ Estado del pedido",
+    desc: "Estamos verificando tu pedido.",
     cls: "border-black/10 bg-black/[0.03] text-black/80",
   };
 }
 
-export default function PaymentStatus({ mode }: { mode: "success" | "pending" | "failure" }) {
+export default function PaymentStatus({
+  mode,
+}: {
+  mode: "success" | "pending" | "failure";
+}) {
   const sb = useMemo(() => supabasePublic(), []);
   const [ref, setRef] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -115,7 +119,7 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
     setRef(r);
   }, []);
 
-  // polling suave (solo en pending/failure o si aún no llega approved)
+  // polling suave
   useEffect(() => {
     if (!ref) return;
 
@@ -126,7 +130,6 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
       setErr(null);
 
       try {
-        // 1) order
         const { data: o, error: e1 } = await sb
           .from("orders")
           .select(
@@ -136,15 +139,17 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
           .maybeSingle();
 
         if (e1) throw e1;
+
         if (!o) {
           setOrder(null);
           setItems([]);
-          setErr("No encontramos la orden. Revisa el enlace o espera unos segundos.");
+          setErr(
+            "No encontramos la orden. Revisa el enlace o espera unos segundos."
+          );
           setLoading(false);
           return;
         }
 
-        // 2) items
         const { data: its, error: e2 } = await sb
           .from("order_items")
           .select(
@@ -169,7 +174,6 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
 
     load();
 
-    // poll: solo si no está approved
     const interval = setInterval(() => {
       if (!order) return;
       const s = (order.payment_status || "").toLowerCase();
@@ -184,7 +188,10 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref]);
 
-  const status = order?.payment_status || (mode === "success" ? "approved" : mode === "pending" ? "pending" : "rejected");
+  const status =
+    order?.payment_status ||
+    (mode === "success" ? "approved" : mode === "pending" ? "pending" : "rejected");
+
   const b = badge(status);
 
   return (
@@ -192,12 +199,13 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-semibold tracking-tight text-black">
-            Estado de tu compra
+            Estado de tu pedido
           </h1>
           <p className="mt-1 text-[13px] text-black/55">
             {ref ? (
               <>
-                Referencia: <span className="font-medium text-black">{ref}</span>
+                Referencia:{" "}
+                <span className="font-medium text-black">{ref}</span>
               </>
             ) : (
               "Cargando referencia..."
@@ -219,7 +227,8 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
 
         {order?.payment_status_detail ? (
           <div className="mt-2 text-[12px] opacity-80">
-            Detalle: <span className="font-medium">{order.payment_status_detail}</span>
+            Detalle:{" "}
+            <span className="font-medium">{order.payment_status_detail}</span>
           </div>
         ) : null}
       </div>
@@ -237,9 +246,12 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
           {/* Items */}
           <div className="rounded-2xl border border-black/10 bg-white">
             <div className="border-b border-black/5 px-6 py-5">
-              <div className="text-[14px] font-semibold text-black">Productos</div>
+              <div className="text-[14px] font-semibold text-black">
+                Productos
+              </div>
               <div className="mt-1 text-[12px] text-black/55">
-                Orden #{order.id.slice(0, 8)} · Creada: {formatPeru(order.created_at)}
+                Orden #{order.id.slice(0, 8)} · Creada:{" "}
+                {formatPeru(order.created_at)}
                 {order.paid_at ? <> · Pagada: {formatPeru(order.paid_at)}</> : null}
               </div>
             </div>
@@ -247,25 +259,41 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
             <div className="p-6">
               <div className="divide-y divide-black/5 rounded-2xl border border-black/10">
                 {items.length === 0 ? (
-                  <div className="px-4 py-4 text-[13px] text-black/55">Sin items.</div>
+                  <div className="px-4 py-4 text-[13px] text-black/55">
+                    Sin items.
+                  </div>
                 ) : (
                   items.map((it) => (
-                    <div key={it.id} className="flex items-center gap-4 px-4 py-4">
+                    <div
+                      key={it.id}
+                      className="flex items-center gap-4 px-4 py-4"
+                    >
                       <div className="h-14 w-14 rounded-xl bg-black/[0.03] overflow-hidden flex items-center justify-center">
                         {it.image ? (
-                          // no usamos next/image para evitar dominios, puedes cambiarlo si ya lo tienes permitido
-                          <img src={it.image} alt={it.title} className="h-full w-full object-cover" />
+                          <img
+                            src={it.image}
+                            alt={it.title}
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
-                          <span className="text-[11px] text-black/40">Sin foto</span>
+                          <span className="text-[11px] text-black/40">
+                            Sin foto
+                          </span>
                         )}
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-medium text-black">{it.title}</div>
+                        <div className="truncate text-[13px] font-medium text-black">
+                          {it.title}
+                        </div>
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-black/55">
                           <span>Cant.: {it.qty}</span>
-                          {it.color_name ? <span>Color: {it.color_name}</span> : null}
-                          {it.size_label ? <span>Talla: {it.size_label}</span> : null}
+                          {it.color_name ? (
+                            <span>Color: {it.color_name}</span>
+                          ) : null}
+                          {it.size_label ? (
+                            <span>Talla: {it.size_label}</span>
+                          ) : null}
                         </div>
                       </div>
 
@@ -286,19 +314,25 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
             <div className="mt-4 space-y-3 text-[13px] text-black/70">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span className="font-semibold text-black">{money(order.subtotal)}</span>
+                <span className="font-semibold text-black">
+                  {money(order.subtotal)}
+                </span>
               </div>
 
               {order.discount > 0 ? (
                 <div className="flex justify-between">
                   <span>Descuento</span>
-                  <span className="font-semibold text-green-700">- {money(order.discount)}</span>
+                  <span className="font-semibold text-green-700">
+                    - {money(order.discount)}
+                  </span>
                 </div>
               ) : null}
 
               <div className="flex justify-between">
                 <span>Envío</span>
-                <span className="font-semibold text-black">{money(order.shipping_cost)}</span>
+                <span className="font-semibold text-black">
+                  {money(order.shipping_cost)}
+                </span>
               </div>
 
               {order.carrier ? (
@@ -312,7 +346,9 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
 
               <div className="flex justify-between text-[14px]">
                 <span className="font-semibold text-black">Total</span>
-                <span className="font-semibold text-black">{money(order.total)}</span>
+                <span className="font-semibold text-black">
+                  {money(order.total)}
+                </span>
               </div>
 
               <div className="mt-4 rounded-2xl border border-black/10 bg-black/[0.02] p-4 text-[12px] text-black/60">
@@ -321,18 +357,6 @@ export default function PaymentStatus({ mode }: { mode: "success" | "pending" | 
                 <div>{order.email}</div>
                 <div>{order.phone}</div>
               </div>
-
-              {(status.toLowerCase() === "pending" || status.toLowerCase() === "rejected" || status.toLowerCase() === "cancelled") &&
-              order.mp_preference_id ? (
-                <a
-                  href={`https://www.mercadopago.com.pe/checkout/v1/redirect?pref_id=${encodeURIComponent(
-                    order.mp_preference_id
-                  )}`}
-                  className="mt-4 inline-flex w-full items-center justify-center h-11 rounded-full bg-[#2f2f2f] text-[13px] font-semibold text-white hover:bg-[#262626]"
-                >
-                  Reintentar pago
-                </a>
-              ) : null}
 
               <Link
                 href="/"
