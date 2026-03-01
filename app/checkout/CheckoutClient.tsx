@@ -11,7 +11,7 @@ import {
 } from "@/lib/ubigeo";
 import { useCart } from "@/lib/store/cart";
 
-// ✅ 1A) Importa el modal
+// ✅ Modal Socio
 import SocioPaymentForm from "@/components/SocioPaymentForm";
 
 type ShippingType =
@@ -58,9 +58,9 @@ export default function CheckoutClient() {
   // ✅ Pago (loading)
   const [paying, setPaying] = useState(false);
 
-  // ✅ 1B) States para modal Socio
+  // ✅ Modal Socio
   const [openSocioPay, setOpenSocioPay] = useState(false);
-  const [createdOrderId, setCreatedOrderId] = useState<string>("");
+  const [createdOrderId, setCreatedOrderId] = useState<string>(""); // ✅ aquí guardamos external_reference
 
   // UBIGEO
   const [departments, setDepartments] = useState<UbigeoOption[]>([]);
@@ -406,7 +406,7 @@ export default function CheckoutClient() {
 
   const canContinue = mounted && faltantes.length === 0;
 
-  // ✅ 1C) Reemplaza TODO tu onContinue por esto (SIN MercadoPago, abre modal Socio)
+  // ✅ onContinue: crea orden y abre modal Socio usando SIEMPRE external_reference
   const onContinue = async () => {
     setSubmitted(true);
     if (!canContinue) return;
@@ -465,7 +465,7 @@ export default function CheckoutClient() {
         },
       };
 
-      // 1) Crear orden (Supabase)
+      // 1) Crear orden
       const orderRes = await fetch("/api/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -480,16 +480,18 @@ export default function CheckoutClient() {
         return;
       }
 
-      // ✅ usa order.order_id o external_reference según tu endpoint
-      const orderId = String(order.order_id || order.external_reference || "");
-      if (!orderId) {
-        alert("No llegó orderId / external_reference");
+      // ✅ IMPORTANTE: pasar SIEMPRE external_reference real
+      const extRef = String(order.external_reference || "");
+      if (!extRef) {
+        alert(
+          "No llegó external_reference. Revisa /api/orders/create para que lo retorne."
+        );
         setPaying(false);
         return;
       }
 
-      // 2) Abrir modal Socio con orderId + total real
-      setCreatedOrderId(orderId);
+      // 2) Abrir modal Socio con external_reference + total real
+      setCreatedOrderId(extRef);
       setOpenSocioPay(true);
     } catch (err) {
       console.error(err);
@@ -509,7 +511,6 @@ export default function CheckoutClient() {
       return;
     }
 
-    // ✅ AHORA MANDA ITEMS (NO SUBTOTAL)
     const payloadItems = items.map((it) => ({
       product_id: it.product_id,
       qty: it.qty,
@@ -1292,12 +1293,12 @@ export default function CheckoutClient() {
         </div>
       )}
 
-      {/* ✅ 2) Renderiza el modal Socio dentro de este checkout (antes del </div> final) */}
+      {/* ✅ Modal Socio */}
       <SocioPaymentForm
         open={openSocioPay}
         onClose={() => setOpenSocioPay(false)}
-        total={total} // tu total calculado con envío + descuento
-        orderId={createdOrderId}
+        total={total}
+        orderId={createdOrderId} // ✅ external_reference
       />
     </div>
   );
