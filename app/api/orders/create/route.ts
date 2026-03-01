@@ -6,9 +6,12 @@ import {
   getDistrictsByProvince,
 } from "@/lib/ubigeo";
 
-// ✅ EMAIL (nuevo)
+// ✅ EMAIL
 import { sendOrderEmail } from "@/lib/email/mailer";
 import { buildOrderEmailHtml } from "@/lib/email/templates";
+
+// ✅ TELEGRAM
+import { sendTelegramMessage } from "@/lib/telegram";
 
 type CartItem = {
   product_id: string;
@@ -104,7 +107,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ siteUrl para emails + imágenes absolutas (fallback seguro)
+    // ✅ siteUrl para emails + imágenes absolutas
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
@@ -115,7 +118,6 @@ export async function POST(req: Request) {
       .toString(16)
       .slice(2)}`;
 
-    // ✅ FIX: log ANTES del insert
     console.log("external_reference:", external_reference);
 
     // totals
@@ -147,7 +149,6 @@ export async function POST(req: Request) {
 
     // Insert order
     const payload = {
-      // ✅ ASEGURAR que vaya EXACTO y top-level
       external_reference,
 
       // customer
@@ -193,16 +194,14 @@ export async function POST(req: Request) {
       created_at_pe: nowPeruISO(), // si tienes esta columna. Si no, bórrala.
       paid_at: null,
 
-      // ✅ store items snapshot (con imagen absoluta para email)
+      // ✅ store items snapshot
       items: items.map((it) => ({
         product_id: it.product_id,
         title: it.title,
         qty: Number(it.qty || 0),
         unit_price: moneyRound(Number(it.unit_price || 0)),
         slug: it.slug ?? null,
-
         image: absImg(it.image),
-
         color_name: it.color_name ?? null,
         color_slug: it.color_slug ?? null,
         size_label: it.size_label ?? null,
@@ -226,7 +225,53 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ EMAIL PENDIENTE (después del insert OK) - NUEVO TEMPLATE PRO
+    // ✅ TELEGRAM (al crear la orden)
+    try {
+      const itemsText = payload.items
+        .map((it: any) => {
+          const lineTotal =
+            Number(it.unit_price || 0) * Number(it.qty || 0);
+
+          const vars = [
+            it.color_name ? `Color: ${it.color_name}` : null,
+            it.size_label ? `Talla: ${it.size_label}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+
+          return `• ${it.title} x${it.qty} — S/ ${lineTotal.toFixed(2)}${
+            vars ? ` (${vars})` : ""
+          }`;
+        })
+        .join("\n");
+
+      const msg =
+        `🧾 NUEVO PEDIDO (PENDING)\n` +
+        `Order ID: ${data.id}\n` +
+        `External Ref: ${data.external_reference}\n\n` +
+        `👤 Cliente: ${payload.full_name}\n` +
+        `📄 Doc: ${payload.doc_type} ${payload.doc_number}\n` +
+        `📱 Cel: ${payload.phone}\n` +
+        `✉️ Email: ${payload.email}\n\n` +
+        `🚚 Envío: ${payload.shipping_type} (${payload.carrier || "-"})\n` +
+        `📍 Ubigeo: ${payload.dep_name || "-"} / ${payload.prov_name || "-"} / ${
+          payload.dist_name || "-"
+        }\n` +
+        `🏠 Dirección: ${payload.address}\n` +
+        (payload.reference ? `🧭 Ref: ${payload.reference}\n` : "") +
+        `\n🛍️ Items:\n${itemsText}\n\n` +
+        `Subtotal: S/ ${Number(payload.subtotal || 0).toFixed(2)}\n` +
+        `Descuento: S/ ${Number(payload.discount || 0).toFixed(2)}\n` +
+        `Envío: S/ ${Number(payload.shipping_cost || 0).toFixed(2)}\n` +
+        `TOTAL: S/ ${Number(payload.total || 0).toFixed(2)}\n` +
+        (payload.coupon ? `Cupón: ${payload.coupon}\n` : "");
+
+      await sendTelegramMessage(msg);
+    } catch (e) {
+      console.error("orders/create telegram error:", e);
+    }
+
+    // ✅ EMAIL PENDIENTE (después del insert OK)
     try {
       if (payload.email && siteUrl && !data.email_pending_sent_at) {
         const html = buildOrderEmailHtml({

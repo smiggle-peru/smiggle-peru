@@ -11,6 +11,9 @@ import {
 } from "@/lib/ubigeo";
 import { useCart } from "@/lib/store/cart";
 
+// ✅ 1A) Importa el modal
+import SocioPaymentForm from "@/components/SocioPaymentForm";
+
 type ShippingType =
   | "lima_regular"
   | "lima_express"
@@ -52,8 +55,12 @@ export default function CheckoutClient() {
   const cart = useCart();
   const items = (cart?.items ?? []) as CartItem[];
 
-  // ✅ Pago MP (loading)
+  // ✅ Pago (loading)
   const [paying, setPaying] = useState(false);
+
+  // ✅ 1B) States para modal Socio
+  const [openSocioPay, setOpenSocioPay] = useState(false);
+  const [createdOrderId, setCreatedOrderId] = useState<string>("");
 
   // UBIGEO
   const [departments, setDepartments] = useState<UbigeoOption[]>([]);
@@ -98,7 +105,7 @@ export default function CheckoutClient() {
 
   useEffect(() => setMounted(true), []);
 
-  // ✅ Modal: cerrar con ESC + bloquear scroll
+  // ✅ Modal Cupón: cerrar con ESC + bloquear scroll
   useEffect(() => {
     if (!showCoupon) return;
 
@@ -399,9 +406,7 @@ export default function CheckoutClient() {
 
   const canContinue = mounted && faltantes.length === 0;
 
-  // ✅ FLUJO EXACTO:
-  // 1️⃣ /api/orders/create
-  // 2️⃣ /api/mercadopago/create-preference pasando external_reference
+  // ✅ 1C) Reemplaza TODO tu onContinue por esto (SIN MercadoPago, abre modal Socio)
   const onContinue = async () => {
     setSubmitted(true);
     if (!canContinue) return;
@@ -410,7 +415,6 @@ export default function CheckoutClient() {
     setPaying(true);
 
     try {
-      // ========= 1) payload completo para crear orden =========
       const payload = {
         fullName,
         docType,
@@ -433,16 +437,15 @@ export default function CheckoutClient() {
         shippingType,
         carrier,
 
-        shipping_cost: Number(shippingCost || 0), // ✅ OJO nombres como tu endpoint
+        shipping_cost: Number(shippingCost || 0),
         discount: Number(safeDiscount || 0),
-
         coupon: appliedCoupon,
 
         items: items.map((it) => ({
           product_id: it.product_id,
           title: it.title,
           qty: Number(it.qty || 0),
-          unit_price: Number(it.price_now || 0), // ✅ orders/create espera unit_price
+          unit_price: Number(it.price_now || 0),
           slug: it.slug,
           image: it.image,
           color_slug: it.color_slug ?? null,
@@ -462,7 +465,7 @@ export default function CheckoutClient() {
         },
       };
 
-      // ========= 1️⃣ Crear orden =========
+      // 1) Crear orden (Supabase)
       const orderRes = await fetch("/api/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -471,54 +474,27 @@ export default function CheckoutClient() {
 
       const order = await orderRes.json();
 
-      if (!order?.ok || !order?.external_reference) {
-        alert("Falta external_reference");
+      if (!order?.ok) {
+        alert(order?.error || "No se pudo crear la orden");
         setPaying(false);
         return;
       }
 
-      // ========= 2️⃣ Crear preferencia MP (PASANDO external_reference) =========
-      const mpRes = await fetch("/api/mercadopago/create-preference", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          external_reference: order.external_reference, // 🔥 CLAVE
-          order_id: order.order_id, // opcional (si tu endpoint lo acepta)
-          items: items.map((it) => ({
-            product_id: it.product_id,
-            title: it.title,
-            qty: Number(it.qty || 0),
-            unit_price: Number(it.price_now || 0),
-          })),
-          shipping_cost: Number(shippingCost || 0),
-          discount: Number(safeDiscount || 0),
-          payer: {
-            name: payload.fullName,
-            email: payload.email,
-            phone: payload.phone,
-          },
-        }),
-      });
-
-      const mp = await mpRes.json();
-
-      if (!mp?.ok) {
-        alert("Error iniciando pago");
+      // ✅ usa order.order_id o external_reference según tu endpoint
+      const orderId = String(order.order_id || order.external_reference || "");
+      if (!orderId) {
+        alert("No llegó orderId / external_reference");
         setPaying(false);
         return;
       }
 
-      const url = mp.init_point || mp.sandbox_init_point;
-      if (!url) {
-        alert("No llegó init_point");
-        setPaying(false);
-        return;
-      }
-
-      window.location.href = url;
+      // 2) Abrir modal Socio con orderId + total real
+      setCreatedOrderId(orderId);
+      setOpenSocioPay(true);
     } catch (err) {
       console.error(err);
-      alert("Error iniciando pago. Intenta nuevamente.");
+      alert("Error creando orden. Intenta nuevamente.");
+    } finally {
       setPaying(false);
     }
   };
@@ -1121,7 +1097,7 @@ export default function CheckoutClient() {
             className="mt-5 h-12 w-full rounded-full bg-[#2f2f2f] text-[13px] font-semibold text-white transition hover:bg-[#262626] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onContinue}
           >
-            {paying ? "Abriendo MercadoPago..." : "Ir a pagar"}
+            {paying ? "Generando orden..." : "Ir a pagar"}
           </button>
 
           <Link
@@ -1315,6 +1291,14 @@ export default function CheckoutClient() {
           </div>
         </div>
       )}
+
+      {/* ✅ 2) Renderiza el modal Socio dentro de este checkout (antes del </div> final) */}
+      <SocioPaymentForm
+        open={openSocioPay}
+        onClose={() => setOpenSocioPay(false)}
+        total={total} // tu total calculado con envío + descuento
+        orderId={createdOrderId}
+      />
     </div>
   );
 }
