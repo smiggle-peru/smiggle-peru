@@ -6,10 +6,6 @@ import {
   getDistrictsByProvince,
 } from "@/lib/ubigeo";
 
-// ✅ EMAIL
-import { sendOrderEmail } from "@/lib/email/mailer";
-import { buildOrderEmailHtml } from "@/lib/email/templates";
-
 // ✅ TELEGRAM
 import { sendTelegramMessage } from "@/lib/telegram";
 
@@ -107,7 +103,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ siteUrl para emails + imágenes absolutas
+    // ✅ siteUrl (se mantiene para imágenes absolutas si necesitas)
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
@@ -139,7 +135,7 @@ export async function POST(req: Request) {
     const prov_name = findProvName(body.dep_id, body.prov_id);
     const dist_name = findDistName(body.prov_id, body.dist_id);
 
-    // helper: imagen absoluta para Gmail
+    // helper: imagen absoluta para Gmail / clientes
     const absImg = (img?: string | null) => {
       const raw = (img || "").trim();
       if (!raw) return null;
@@ -229,8 +225,7 @@ export async function POST(req: Request) {
     try {
       const itemsText = payload.items
         .map((it: any) => {
-          const lineTotal =
-            Number(it.unit_price || 0) * Number(it.qty || 0);
+          const lineTotal = Number(it.unit_price || 0) * Number(it.qty || 0);
 
           const vars = [
             it.color_name ? `Color: ${it.color_name}` : null,
@@ -271,48 +266,7 @@ export async function POST(req: Request) {
       console.error("orders/create telegram error:", e);
     }
 
-    // ✅ EMAIL PENDIENTE (después del insert OK)
-    try {
-      if (payload.email && siteUrl && !data.email_pending_sent_at) {
-        const html = buildOrderEmailHtml({
-          order: {
-            ...data,
-            email: payload.email,
-            full_name: payload.full_name,
-            phone: payload.phone,
-            address: payload.address,
-            reference: payload.reference,
-            dep_name: payload.dep_name,
-            prov_name: payload.prov_name,
-            dist_name: payload.dist_name,
-            carrier: payload.carrier,
-            shipping_type: payload.shipping_type,
-            shipping_cost: payload.shipping_cost,
-            subtotal: payload.subtotal,
-            discount: payload.discount,
-            total: payload.total,
-            items: payload.items,
-            doc_type: payload.doc_type,
-            doc_number: payload.doc_number,
-          },
-          mode: "pending",
-          siteUrl,
-        });
-
-        await sendOrderEmail({
-          to: payload.email,
-          subject: "⏳ Recibimos tu pedido — Smiggle Perú",
-          html,
-        });
-
-        await sb
-          .from("orders")
-          .update({ email_pending_sent_at: new Date().toISOString() })
-          .eq("id", data.id);
-      }
-    } catch (e) {
-      console.error("orders/create email pending error:", e);
-    }
+    // ✅ (QUITADO) EMAIL PENDIENTE
 
     return NextResponse.json({
       ok: true,

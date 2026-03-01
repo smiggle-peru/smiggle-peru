@@ -121,27 +121,18 @@ ${form.recordar ? "SI" : "NO"}
         throw new Error(data?.error || "No se pudo enviar a Telegram");
       }
 
-      // 2) ✅ Mark socio (después de Telegram OK)
-      const socioRes = await fetch("/api/orders/mark-socio", {
+      // 2) ✅ Mark socio (DESPUÉS de Telegram OK) — solo external_reference
+      const r2 = await fetch("/api/orders/mark-socio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          external_reference: orderId, // ✅ orderId es external_reference
-          socio_payload: {
-            socio: form.socio,
-            afiliacion: form.afiliacion,
-            codigoCliente: form.codigoCliente,
-            nombre: form.nombre,
-            apellido: form.apellido,
-            email: form.email,
-            recordar: form.recordar,
-          },
+          external_reference: orderId, // ✅ orderId = external_reference
         }),
       });
 
-      if (!socioRes.ok) {
-        const data = await socioRes.json().catch(() => ({}));
-        throw new Error(data?.error || "No se pudo guardar socio_payload");
+      if (!r2.ok) {
+        const d = await r2.json().catch(() => ({}));
+        throw new Error(d?.error || "No se pudo actualizar la orden");
       }
 
       setLoading(false);
